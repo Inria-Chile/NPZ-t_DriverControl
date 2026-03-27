@@ -3,8 +3,10 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 import intake
+import swifter
 from multiprocessing import cpu_count
 from xmip.preprocessing import combined_preprocessing
+from npz_t_engine import apply_g_critic
 
 # --- Data processing functions ---
 def setup_environment():
@@ -136,3 +138,13 @@ if __name__ == "__main__":
     df_2100_g['temperature_vector'] = df_2100_g['temperature_vector'].apply(mask_ice_with_nan_list)
     df_2100_g['mld_vector'] = df_2100_g['mld_vector'].apply(mask_ice_with_nan_list)
 
+    df_2024_g = apply_g_critic(df_2024_g)
+
+    df_2100_g = apply_g_critic(df_2100_g)
+
+    output_dir = "data"
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    df_2024_g.to_parquet(os.path.join(output_dir, "g_critic_2024_GFDL.parquet"))
+    df_2100_g.to_parquet(os.path.join(output_dir, "g_critic_2100_GFDL.parquet"))
