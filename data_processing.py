@@ -3,15 +3,12 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 import intake
-import intake_esm
 from multiprocessing import cpu_count
 from xmip.preprocessing import combined_preprocessing
 
-# --- CONFIGURACIÓN DE ENTORNO (Lo que antes era manual) ---
+# --- Data processing functions ---
 def setup_environment():
-    """Configura las variables de sistema para ESMF"""
     
-    # Localizar ESMFMKFILE automáticamente
     if "ESMFMKFILE" not in os.environ:
         try:
             esmf_path = os.path.join(os.environ["HOME"], "git/esmf/lib/libO/")
@@ -26,18 +23,15 @@ def setup_environment():
 def get_cmip6_datatree(
     source_ids=["GFDL-ESM4"], 
     variable_ids=["tos", "mlotst"], 
-    experiment_ids=["ssp585", "historical"],
+    experiment_ids=["ssp585"],
     table_id="Omon",
     grid_label="gn"
 ):
-    """
-    Conecta a Pangeo y devuelve el datatree filtrado por parámetros.
-    """
-    print(f"🔍 Buscando en Pangeo: {source_ids} | {experiment_ids}...")
+
+    print(f"🔍 Searching in Pangeo: {source_ids} | {experiment_ids}...")
     
     col = intake.open_esm_datastore("https://storage.googleapis.com/cmip6/pangeo-cmip6.json")
     
-    # Buscamos usando las listas pasadas como argumentos
     cat = col.search(
         source_id=source_ids,
         variable_id=variable_ids,
@@ -49,7 +43,7 @@ def get_cmip6_datatree(
 
     # Verificación de seguridad: ¿Encontró algo?
     if len(cat) == 0:
-        raise ValueError("❌ No se encontraron datos para los criterios especificados.")
+        raise ValueError("❌ There are no values")
 
     kwargs = dict(
         preprocess=combined_preprocessing,
@@ -59,17 +53,86 @@ def get_cmip6_datatree(
         compat="no_conflicts",
     )
     
-    # Agrupamos por los atributos que definen la jerarquía del DataTree
     cat.esmcat.aggregation_control.groupby_attrs = ["source_id", "experiment_id"]
     
-    print("🌳 Construyendo DataTree (esto puede tardar un poco)...")
     return cat.to_datatree(**kwargs)
 
+def load_dataframe(model_name, scenario_name, start_slice, end_slice):
 
-# --- BLOQUE DE EJECUCIÓN PRINCIPAL ---
+    ssp585 = dt[model_name][scenario_name].ds
+
+    da_temp = ssp585["tos"].sel(time=slice(start_slice, end_slice))
+    da_mld = ssp585["mlotst"].sel(time=slice(start_slice, end_slice))
+
+    df_temp = da_temp.to_dataframe(name="tos").reset_index()
+    df_mld = da_mld.to_dataframe(name="mlotst").reset_index()
+
+    df_temp["month"] = [t.month for t in df_temp["time"]]
+    df_mld["month"] = [t.month for t in df_mld["time"]]
+
+    df_temp_monthly = (
+        df_temp.groupby(["lat", "lon", "month"])["tos"]
+        .mean()
+        .reset_index()
+        .sort_values(by=["lat", "lon", "month"]) 
+    )
+
+    df_mld_monthly = (
+        df_mld.groupby(["lat", "lon", "month"])["mlotst"]
+        .mean()
+        .reset_index()
+        .sort_values(by=["lat", "lon", "month"]) 
+    )
+
+    df_temp_vec = df_temp_monthly.groupby(["lat", "lon"])["tos"].apply(lambda v: v.tolist()).reset_index()
+
+    df_mld_vec = df_mld_monthly.groupby(["lat", "lon"])["mlotst"].apply(lambda v: v.tolist()).reset_index()
+
+    df_temp_vec = df_temp_vec.rename(columns={"tos": "temperature_vector"})
+    df_mld_vec = df_mld_vec.rename(columns={"mlotst": "mld_vector"})
+
+    df_merged = df_temp_vec.merge(df_mld_vec, on=["lat", "lon"], how="inner")
+    df_merged["model_name"] = model_name
+    df_merged["scenario_name"] = scenario_name
+
+    return df_merged
+
+def mask_ice_with_nan_list(cell, threshold=-1.8):
+    # 1. Creamos la lista de "emergencia" con 12 NaNs
+    nan_list = [np.nan] * 12
+    
+    try:
+        # Extraer el contenido (manejando tu estructura de lista de arrays)
+        if isinstance(cell, list) and len(cell) > 0:
+            arr = cell
+        else:
+            return nan_list
+
+        # Si es Tierra (todo NaN) o Hielo (min <= threshold)
+        if np.all(np.isnan(arr)) or np.nanmin(arr) <= threshold:
+            return nan_list
+        
+        # Si es océano abierto, devolvemos el array original (asegurando que sea lista/array de 12)
+        return arr 
+    
+    except:
+        # Ante cualquier duda o error (como listas vacías), devolvemos los 12 NaNs
+        return nan_list
+
+
+# --- Principal execution block---
 if __name__ == "__main__":
-    # 1. Preparar sistema
+
     setup_environment()
-    # 3. Descarga y Procesamiento
-    print("📥 Conectando a Pangeo...")
+
     dt = get_cmip6_datatree()
+
+    df_2024_g = load_dataframe("GFDL-ESM4", "ssp585", "2024-01", "2024-12")
+    df_2100_g = load_dataframe("GFDL-ESM4", "ssp585", "2100-01", "2100-12")
+
+    df_2024_g['temperature_vector'] = df_2024_g['temperature_vector'].apply(mask_ice_with_nan_list)
+    df_2024_g['mld_vector'] = df_2024_g['mld_vector'].apply(mask_ice_with_nan_list)
+
+    df_2100_g['temperature_vector'] = df_2100_g['temperature_vector'].apply(mask_ice_with_nan_list)
+    df_2100_g['mld_vector'] = df_2100_g['mld_vector'].apply(mask_ice_with_nan_list)
+
