@@ -1,4 +1,5 @@
 import numpy as np
+import swifter
 
 # Thermodynamic Constants
 T0 = 293.15
