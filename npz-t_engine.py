@@ -1,6 +1,4 @@
 import numpy as np
-import swifter 
-from scipy.optimize import curve_fit
 
 # Thermodynamic Constants
 T0 = 293.15
