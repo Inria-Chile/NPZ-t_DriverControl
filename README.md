@@ -8,12 +8,12 @@ This repository contains the official implementation of the **NPZ-T (Nutrient-Ph
 
 ## 🔬 Scientific Context
 
-This project implements a diagnostic tool to calculate the **Critical Nutrient Threshold** ($\gamma_{crit}$), identifying the transition from mixing-driven to metabolic-driven ecological regimes.
+This project implements a diagnostic tool to calculate the **Critical Nutrient Threshold** ($\gamma_{crit}$), identifying the transition from mixing-driven to metabolic-driven ecological regimes. The core stability is determined via Floquet theory, linearizing the dynamics around the extinction equilibrium to derive uniform persistence criteria.
 
 ## 🛠 Repository Structure
 
 * **`npz_t_engine.py`**: The mathematical core. Implements Thermodynamic Performance Curves (TPC), linearized Floquet stability analysis, and the calculation of critical bifurcation points.
-* **`data_processing.py`**: High-performance data pipeline. Connects to the **Pangeo CMIP6 Cloud** via `intake-esm`, manages **Dask** distributed clusters, and performs `xMIP` preprocessing for models (e.g., GFDL-ESM4, ACCESS-CM2).
+* **`data_processing.py`**: High-performance data pipeline. Connects to the **Pangeo CMIP6 Cloud** via `intake-esm`, manages **Dask** distributed clusters, and performs `xMIP` preprocessing.
 * **`run_plots.py`**: Visualization suite and LaTeX exporter. Generates global maps using `cartopy` and automates the generation of results for the manuscript.
 * **`data/`**: Local storage for processed `.pkl` files and exported LaTeX tables (ignored by git).
 
@@ -25,6 +25,8 @@ This project requires `ESMF` for regridding and specific climate science librari
 **System requirements (Ubuntu/Debian):**
 ```bash
 sudo apt install gfortran gcc make perl libblas-dev liblapack-dev libyaml-cpp-dev openmpi-bin libopenmpi-dev
+```
+
 
 **Python dependencies:**
 
@@ -67,3 +69,4 @@ If you use this framework or the NPZ-T model in your research, please cite the f
   note={Under review}
 }
 
+``
