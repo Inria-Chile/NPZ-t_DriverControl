@@ -120,7 +120,19 @@ def mask_ice_with_nan_list(cell, threshold=-1.8):
     except:
         # Ante cualquier duda o error (como listas vacías), devolvemos los 12 NaNs
         return nan_list
+def clean_data(df):
+    df['temperature_vector'] = df['temperature_vector'].apply(mask_ice_with_nan_list)
+    df['mld_vector'] = df['mld_vector'].apply(mask_ice_with_nan_list)
+    return df
 
+def compute_g_critic(df,year="2024", model="GFDL-ESM4", scenario="ssp585"):
+    df = clean_data(df)
+    df = apply_g_critic(df)
+    output_dir = "data"
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    df.to_parquet(os.path.join(output_dir, f"g_critic_{year}_{scenario}_{model}.parquet"))
+    return df
 
 # --- Principal execution block---
 if __name__ == "__main__":
@@ -132,19 +144,6 @@ if __name__ == "__main__":
     df_2024_g = load_dataframe("GFDL-ESM4", "ssp585", "2024-01", "2024-12")
     df_2100_g = load_dataframe("GFDL-ESM4", "ssp585", "2100-01", "2100-12")
 
-    df_2024_g['temperature_vector'] = df_2024_g['temperature_vector'].apply(mask_ice_with_nan_list)
-    df_2024_g['mld_vector'] = df_2024_g['mld_vector'].apply(mask_ice_with_nan_list)
+    df_2024_g = compute_g_critic(df_2024_g)
 
-    df_2100_g['temperature_vector'] = df_2100_g['temperature_vector'].apply(mask_ice_with_nan_list)
-    df_2100_g['mld_vector'] = df_2100_g['mld_vector'].apply(mask_ice_with_nan_list)
-
-    df_2024_g = apply_g_critic(df_2024_g)
-
-    df_2100_g = apply_g_critic(df_2100_g)
-
-    output_dir = "data"
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-
-    df_2024_g.to_parquet(os.path.join(output_dir, "g_critic_2024_GFDL.parquet"))
-    df_2100_g.to_parquet(os.path.join(output_dir, "g_critic_2100_GFDL.parquet"))
+    df_2100_g = compute_g_critic(df_2100_g, year="2100")
