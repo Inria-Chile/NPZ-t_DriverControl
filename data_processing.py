@@ -151,12 +151,7 @@ def load_hybrid(model_name, scenario_name, target_year, member_idx=0):
     df["model"] = model_name
     df["scenario"] = scenario_name
     df["year_data"] = target_year
-    
 
-    output_dir = "data"
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-    df.to_parquet(os.path.join(output_dir, f"hybrid_{target_year}_{model_name}.parquet"))
     return df
 
 def mask_ice_with_nan_list(cell, threshold=-1.8):
@@ -186,15 +181,38 @@ def compute_g_critic(df,year="2024", model="GFDL-ESM4", scenario="ssp585"):
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     df.to_parquet(os.path.join(output_dir, f"g_critic_{year}_{scenario}_{model}.parquet"))
-    return df
-def compute_hyperplane(df,year="2024", model="GFDL-ESM4", scenario="ssp585"):
+
+def compute_hyperplane(df):
     df = clean_data(df)
     df = apply_hyperplane(df)
+    return df
+
+def calculate_mean_temp(row):
+    temp_vec = row["temp_vec_year"]
+    if isinstance(temp_vec, (list, np.ndarray)):
+        return np.mean(temp_vec)
+    return np.nan
+
+def calculate_max_mld(row):
+    mld_vec = row["mld_vec_year"]
+    if isinstance(mld_vec, (list, np.ndarray)):
+        return np.max(mld_vec)
+    return np.nan
+
+def data_merged(df_hyper,df_hybrid,year="2024",scenario="ssp585",model="GFDL-ESM4"):
+    df_hybrid['lat'] = df_hybrid['lat'].astype('float64')
+    df_hybrid['lon'] = df_hybrid['lon'].astype('float64')
+    df_merged = pd.merge(df_hyper, df_hybrid, on=['lat', 'lon'], how='inner')
+    df_merged["temp_mean_year"] = df_merged.apply(calculate_mean_temp, axis=1)
+    df_merged["mld_max_year"] = df_merged.apply(calculate_max_mld, axis=1)
+    df_merged["sens_a"] = df_merged["S_temp"] * (df_merged["temp_mean_year"]- df_merged["temp_mean_hist"])
+    df_merged["sens_b"] = df_merged["S_mld"] * (df_merged["mld_max_year"] - df_merged["mld_max_hist"])
+    df_merged["sens"] = df_merged["sens_a"].abs()/(df_merged["sens_a"].abs() + df_merged["sens_b"].abs())
     output_dir = "data"
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
-    df.to_parquet(os.path.join(output_dir, f"hyperplane_{year}_{scenario}_{model}.parquet"))
-    return df
+    df_merged.to_parquet(os.path.join(output_dir, f"hyperplane_{year}_{scenario}_{model}.parquet"))
+
 
 # --- Principal execution block---
 if __name__ == "__main__":
@@ -211,13 +229,23 @@ if __name__ == "__main__":
 
     df_2100_h = load_hybrid("GFDL-ESM4", "ssp585", "2100")
 
-    df_2024_g = compute_g_critic(df_2024_g)
+    compute_g_critic(df_2024_g)
 
-    df_2100_g = compute_g_critic(df_2100_g, year="2100")
+    compute_g_critic(df_2100_g, year="2100")
 
     df_2024_g = compute_hyperplane(df_2024_g)
 
-    df_2100_g = compute_hyperplane(df_2100_g, year="2100")
+    df_2100_g = compute_hyperplane(df_2100_g)
+
+    df_2024_g = pd.read_parquet("/home/matiasneto/git/NPZ-T_Persistence/data/hyperplane_2024_ssp585_GFDL-ESM4.parquet")
+
+    df_2100_g = pd.read_parquet("/home/matiasneto/git/NPZ-T_Persistence/data/hyperplane_2100_ssp585_GFDL-ESM4.parquet")
+
+    data_merged(df_2024_g, df_2024_h)
+
+    data_merged(df_2100_g, df_2100_h, year="2100")
+
+
 
 
 
