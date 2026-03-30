@@ -237,9 +237,9 @@ if __name__ == "__main__":
 
     df_2100_g = compute_hyperplane(df_2100_g)
 
-    df_2024_g = pd.read_parquet("/home/matiasneto/git/NPZ-T_Persistence/data/hyperplane_2024_ssp585_GFDL-ESM4.parquet")
+    #df_2024_g = pd.read_parquet("~/data/hyperplane_2024_ssp585_GFDL-ESM4.parquet")
 
-    df_2100_g = pd.read_parquet("/home/matiasneto/git/NPZ-T_Persistence/data/hyperplane_2100_ssp585_GFDL-ESM4.parquet")
+    #df_2100_g = pd.read_parquet("~/data/hyperplane_2100_ssp585_GFDL-ESM4.parquet")
 
     data_merged(df_2024_g, df_2024_h)
 
