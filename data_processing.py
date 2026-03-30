@@ -6,7 +6,7 @@ import intake
 import swifter
 from multiprocessing import cpu_count
 from xmip.preprocessing import combined_preprocessing
-from npz_t_engine import apply_g_critic
+from npz_t_engine import apply_g_critic, apply_hyperplane
 
 # --- Data processing functions ---
 def setup_environment():
@@ -25,7 +25,7 @@ def setup_environment():
 def get_cmip6_datatree(
     source_ids=["GFDL-ESM4"], 
     variable_ids=["tos", "mlotst"], 
-    experiment_ids=["ssp585"],
+    experiment_ids=["ssp585","historical"],
     table_id="Omon",
     grid_label="gn"
 ):
@@ -43,7 +43,6 @@ def get_cmip6_datatree(
         require_all_on=["source_id"],
     )
 
-    # Verificación de seguridad: ¿Encontró algo?
     if len(cat) == 0:
         raise ValueError("❌ There are no values")
 
@@ -98,27 +97,82 @@ def load_dataframe(model_name, scenario_name, start_slice, end_slice):
     df_merged["scenario_name"] = scenario_name
 
     return df_merged
+def load_hybrid(model_name, scenario_name, target_year, member_idx=0):
+    """
+    Carga datos híbridos para un año específico:
+    1. HISTÓRICO (Fijo 1960-2000): Promedios climáticos base.
+    2. TARGET (target_year): Vectores mensuales para ese año específico.
+    """
+    
+    ds_full = dt[model_name][scenario_name].ds
+    ds_hist = dt[model_name]["historical"].ds
+
+    ds_hist=ds_hist.isel(member_id=member_idx)
+    
+    ds_hist = ds_hist.sel(time=slice("1960", "2000"))
+    
+    da_temp_base = ds_hist["tos"].mean(dim="time", keep_attrs=True)
+    da_mld_base = ds_hist["mlotst"].groupby("time.year").max().mean(dim="year", keep_attrs=True)
+
+    ds_target = ds_full.sel(time=str(target_year))
+    
+    if ds_target.sizes['time'] != 12:
+        print(f"⚠️ Advertencia: El año {target_year} tiene {ds_target.sizes['time']} pasos de tiempo (se esperaban 12).")
+
+    vals_temp_target = ds_target["tos"].values
+    vals_mld_target = ds_target["mlotst"].values
+
+    lat_2d, lon_2d, temp_base_2d, mld_base_2d = xr.broadcast(
+        ds_full.lat, ds_full.lon, da_temp_base, da_mld_base
+    )
+    
+    lat_flat = lat_2d.values.flatten()
+    lon_flat = lon_2d.values.flatten()
+    temp_base_flat = temp_base_2d.values.flatten()
+    mld_base_flat = mld_base_2d.values.flatten()
+    
+    temp_vec_flat = vals_temp_target.reshape(12, -1).T
+    mld_vec_flat = vals_mld_target.reshape(12, -1).T
+
+    if len(lat_flat) != len(temp_vec_flat):
+        raise ValueError(f"Desajuste de grilla: Coordenadas {len(lat_flat)} vs Datos {len(temp_vec_flat)}")
+
+    df = pd.DataFrame({
+        "lat": lat_flat,
+        "lon": lon_flat,
+        
+        "temp_mean_hist": temp_base_flat,
+        "mld_max_hist": mld_base_flat,
+        
+        "temp_vec_year": list(temp_vec_flat),
+        "mld_vec_year": list(mld_vec_flat)
+    })
+    
+    df["model"] = model_name
+    df["scenario"] = scenario_name
+    df["year_data"] = target_year
+    
+
+    output_dir = "data"
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    df.to_parquet(os.path.join(output_dir, f"hybrid_{target_year}_{model_name}.parquet"))
+    return df
 
 def mask_ice_with_nan_list(cell, threshold=-1.8):
-    # 1. Creamos la lista de "emergencia" con 12 NaNs
     nan_list = [np.nan] * 12
-    
     try:
-        # Extraer el contenido (manejando tu estructura de lista de arrays)
         if isinstance(cell, list) and len(cell) > 0:
             arr = cell
         else:
             return nan_list
 
-        # Si es Tierra (todo NaN) o Hielo (min <= threshold)
         if np.all(np.isnan(arr)) or np.nanmin(arr) <= threshold:
             return nan_list
         
-        # Si es océano abierto, devolvemos el array original (asegurando que sea lista/array de 12)
         return arr 
     
     except:
-        # Ante cualquier duda o error (como listas vacías), devolvemos los 12 NaNs
         return nan_list
 def clean_data(df):
     df['temperature_vector'] = df['temperature_vector'].apply(mask_ice_with_nan_list)
@@ -133,6 +187,14 @@ def compute_g_critic(df,year="2024", model="GFDL-ESM4", scenario="ssp585"):
         os.makedirs(output_dir)
     df.to_parquet(os.path.join(output_dir, f"g_critic_{year}_{scenario}_{model}.parquet"))
     return df
+def compute_hyperplane(df,year="2024", model="GFDL-ESM4", scenario="ssp585"):
+    df = clean_data(df)
+    df = apply_hyperplane(df)
+    output_dir = "data"
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    df.to_parquet(os.path.join(output_dir, f"hyperplane_{year}_{scenario}_{model}.parquet"))
+    return df
 
 # --- Principal execution block---
 if __name__ == "__main__":
@@ -142,8 +204,20 @@ if __name__ == "__main__":
     dt = get_cmip6_datatree()
 
     df_2024_g = load_dataframe("GFDL-ESM4", "ssp585", "2024-01", "2024-12")
+
     df_2100_g = load_dataframe("GFDL-ESM4", "ssp585", "2100-01", "2100-12")
+
+    df_2024_h = load_hybrid("GFDL-ESM4", "ssp585", "2024")
+
+    df_2100_h = load_hybrid("GFDL-ESM4", "ssp585", "2100")
 
     df_2024_g = compute_g_critic(df_2024_g)
 
     df_2100_g = compute_g_critic(df_2100_g, year="2100")
+
+    df_2024_g = compute_hyperplane(df_2024_g)
+
+    df_2100_g = compute_hyperplane(df_2100_g, year="2100")
+
+
+
