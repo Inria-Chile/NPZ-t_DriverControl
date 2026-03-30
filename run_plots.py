@@ -248,7 +248,6 @@ def export_latex_results(cat_grid, lat_mesh, lon_mesh, labels, model_name="GFDL"
     df_stats = pd.DataFrame(table_rows)
     table_tex = df_stats.to_latex(
         index=False,
-        booktabs=True,
         escape=False,
         caption=f"Global distribution of phytoplankton regimes and habitat statistics derived from {model_name} projections.",
         label=f"tab:habitat_stats_{model_name.lower()}",
@@ -265,7 +264,7 @@ def export_latex_results(cat_grid, lat_mesh, lon_mesh, labels, model_name="GFDL"
     table_file = os.path.join(output_path, "habitat_table.tex")
     with open(table_file, "w") as f:
         f.write(table_tex)
-def export_hyperplane_stats(df, model_name="GFDL", threshold=0.80):
+def export_hyperplane_stats(df, year="2024",model_name="GFDL", threshold=0.70):
     """
     Calculates R-squared statistics for the hyperplane approximation 
     and exports them as LaTeX commands for the manuscript.
@@ -291,7 +290,7 @@ def export_hyperplane_stats(df, model_name="GFDL", threshold=0.80):
     output_path = "data/latex"
     os.makedirs(output_path, exist_ok=True)
     
-    file_name = os.path.join(output_path, f"hyperplane_stats_{model_name.lower()}.tex")
+    file_name = os.path.join(output_path, f"hyperplane_stats__{year}_{model_name.lower()}.tex")
     with open(file_name, "w") as f:
         f.write("\n".join(cmds))
 
@@ -363,7 +362,6 @@ def plot_thermal_index(df,year="2024",zoom_spg=False):
         extend='both',
         zorder=1  # <--- ESTA ES LA CLAVE
     )
-    # 2. EL TRUCO MAESTRO: Forzamos el rasterizado del objeto resultante
     im.set_rasterized(True)
 
     # 3. Detalles de la barra de color (para que no se vea segmentada en el PDF)
@@ -372,7 +370,7 @@ def plot_thermal_index(df,year="2024",zoom_spg=False):
     cbar.solids.set_edgecolor("face")
 
     # 4. Detalles Finales (Sin la línea negra del cero)
-    cbar.set_label(f"$\mathcal{D}^{year}_T(x)$", fontsize=12)
+    cbar.set_label(fr"$\mathcal{{D}}^{{{year}}}_T(x)$", fontsize=12)
     cbar.ax.tick_params(labelsize=10)
     if zoom_spg==False:
         plt.title(f"Global Thermal Dominance Index ({year})")
@@ -416,7 +414,7 @@ if __name__ == "__main__":
 
     export_hyperplane_stats(df_hyper_2024_g)
 
-    export_hyperplane_stats(df_hyper_2100_g)
+    export_hyperplane_stats(df_hyper_2100_g, year="2100")
 
     plot_thermal_index(df_hyper_2024_g)
 
