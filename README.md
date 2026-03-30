@@ -22,15 +22,18 @@ This project implements a diagnostic tool to calculate the **Critical Nutrient T
 ### 1. Environment & Dependencies
 This project requires `ESMF` for regridding and specific climate science libraries. 
 
-**System requirements (Ubuntu/Debian):**
-```bash
-sudo apt install gfortran gcc make perl libblas-dev liblapack-dev libyaml-cpp-dev openmpi-bin libopenmpi-dev
-```
+**System requirements**:
+Install required build tools (see [9.3 System Specific Information](https://earthsystemmodeling.org/docs/nightly/develop/ESMF_usrdoc/node10.html#SECTION000103000000000000000)).
+    - **macOS using Homebrew:** `brew install gfortran gcc gcc@9 openmpi perl lapack yaml-cpp netcdf xerces-c make`
+    - **Ubuntu Linux:** `sudo apt install gfortran gcc make perl libblas-dev liblapack-dev libyaml-cpp-dev openmpi-bin libopenmpi-dev openmpi-common`
+    - **Windows:** TO DO.
+
+    **Note:** Be aware that some features might need to be enabled in the ESMF configuration to be available.
 
 
 **Python dependencies:**
 
-Ensure you have intake-esm, xarray, xesmf, dask, swifter, and datatree installed.
+Ensure you have intake-esm, xarray, xesmf, gcsfs, swifter, and datatree installed.
 
 **2. Configuration**
 
