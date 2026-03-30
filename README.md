@@ -8,11 +8,7 @@ This repository contains the official implementation of the **NPZ-T (Nutrient-Ph
 
 ## 🔬 Scientific Context
 
-Traditional "Critical Depth" theories often neglect the non-linear coupling between seasonal mixing and metabolic temperature dependence. This project implements a diagnostic tool to calculate the **Critical Nutrient Threshold** ($\gamma_{crit}$), identifying the transition from mixing-driven to metabolic-driven ecological regimes.
-
-The core stability condition is defined by the annual integral of the net growth rate:
-$$\frac{1}{T} \int_{0}^{T} \left[ \mu(t, T, I) - m(t, T) - g(t, Z) - \sigma(t) \right] dt = 0$$
-where $\sigma(t)$ represents the dilution rate driven by Mixed Layer Depth (MLD) dynamics.
+This project implements a diagnostic tool to calculate the **Critical Nutrient Threshold** ($\gamma_{crit}$), identifying the transition from mixing-driven to metabolic-driven ecological regimes.
 
 ## 🛠 Repository Structure
 
