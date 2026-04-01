@@ -25,13 +25,14 @@ This project requires `ESMF` for regridding and specific climate science librari
 **System requirements**:
 Install required build tools according to your operating system (see [9.3 System Specific Information](https://earthsystemmodeling.org/docs/nightly/develop/ESMF_usrdoc/node10.html#SECTION000103000000000000000)).
 
-**macOS**
-```bash
-brew install gfortran gcc gcc@9 openmpi perl lapack yaml-cpp netcdf xerces-c make
-```
+
 **Ubuntu Linux:**
 ```bash
 sudo apt install gfortran gcc make perl libblas-dev liblapack-dev libyaml-cpp-dev openmpi-bin libopenmpi-dev openmpi-common
+```
+**macOS**
+```bash
+brew install gfortran gcc gcc@9 openmpi perl lapack yaml-cpp netcdf xerces-c make
 ```
 **Windows:**
 TO DO
