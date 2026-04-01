@@ -121,11 +121,6 @@ def load_dataframe(model_name, scenario_name, start_slice, end_slice):
 
     return df_merged
 def load_hybrid(model_name, scenario_name, target_year, member_idx=0):
-    """
-    Carga datos híbridos para un año específico:
-    1. HISTÓRICO (Fijo 1960-2000): Promedios climáticos base.
-    2. TARGET (target_year): Vectores mensuales para ese año específico.
-    """
     
     ds_full = dt[model_name][scenario_name].ds
     ds_hist = dt[model_name]["historical"].ds
@@ -140,7 +135,7 @@ def load_hybrid(model_name, scenario_name, target_year, member_idx=0):
     ds_target = ds_full.sel(time=str(target_year))
     
     if ds_target.sizes['time'] != 12:
-        print(f"⚠️ Advertencia: El año {target_year} tiene {ds_target.sizes['time']} pasos de tiempo (se esperaban 12).")
+        print(f"⚠️ Warming: The year {target_year} have {ds_target.sizes['time']} time steps (12 was expected).")
 
     vals_temp_target = ds_target["tos"].values
     vals_mld_target = ds_target["mlotst"].values
@@ -158,7 +153,7 @@ def load_hybrid(model_name, scenario_name, target_year, member_idx=0):
     mld_vec_flat = vals_mld_target.reshape(12, -1).T
 
     if len(lat_flat) != len(temp_vec_flat):
-        raise ValueError(f"Desajuste de grilla: Coordenadas {len(lat_flat)} vs Datos {len(temp_vec_flat)}")
+        raise ValueError(f"Grid problem: Coordinated {len(lat_flat)} vs Data {len(temp_vec_flat)}")
 
     df = pd.DataFrame({
         "lat": lat_flat,
