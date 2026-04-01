@@ -256,21 +256,20 @@ def plot_biogeo_shift(df1,df2,year1="2024",year2="2100",model="GFDL-ESM4"):
     plt.savefig(f"figures/biogeo_shifts_{model}.pdf", bbox_inches='tight', dpi=300)
     #plt.show()
     return labels, cat_grid, lat_mesh, lon_mesh
-def export_latex_results(cat_grid, lat_mesh, lon_mesh, labels, model_name="GFDL"):
 
+def export_latex_results(cat_grid, lat_mesh, lon_mesh, labels, model_name="GFDL"):
     R = 6371.0  
     dlat = np.abs(np.radians(lat_mesh[1, 0] - lat_mesh[0, 0]))
     dlon = np.abs(np.radians(lon_mesh[0, 1] - lon_mesh[0, 0]))
     
     cell_areas = (R**2) * np.cos(np.radians(lat_mesh)) * dlat * dlon
-    
     total_ocean_area = np.nansum(cell_areas[~np.isnan(cat_grid)])
     
     commands = [f"% --- {model_name} Automatic Variables ---"]
     table_rows = []
     
     def clean_cmd_name(name):
-        clean = "".join(filter(str.isalnum, name.title()))
+        clean = "".join(filter(str.isalpha, name.title()))
         return clean
 
     for i, label in enumerate(labels):
@@ -280,17 +279,17 @@ def export_latex_results(cat_grid, lat_mesh, lon_mesh, labels, model_name="GFDL"
         percentage = (km2 / total_ocean_area) * 100 if total_ocean_area > 0 else 0
         
         cmd_base = clean_cmd_name(label)
+
+        cmd_area_name = f"{model_name}{cmd_base}Area"
+        cmd_perc_name = f"{model_name}{cmd_base}Perc"
         
-        cmd_area = f"\\{model_name}{cmd_base}Area"
-        cmd_perc = f"\\{model_name}{cmd_base}Perc"
-        
-        commands.append(f"\\newcommand{{{cmd_area}}}{{{m_km2:.2f}}}")
-        commands.append(f"\\newcommand{{{cmd_perc}}}{{{percentage:.1f}}}")
+        commands.append(f"\\newcommand{{\\{cmd_area_name}}}{{{m_km2:.2f}}}")
+        commands.append(f"\\newcommand{{\\{cmd_perc_name}}}{{{percentage:.1f}}}")
         
         table_rows.append({
             "Ecological Regime / Habitat": label.replace('\n', ' '),
-            "Area ($10^6$ km$^2$)": cmd_area,
-            "Ocean Coverage (%)": f"{cmd_perc}\\%"
+            "Area ($10^6$ km$^2$)": f"\\{cmd_area_name}",
+            "Ocean Coverage (%)": f"\\{cmd_perc_name}\\%"
         })
 
     df_stats = pd.DataFrame(table_rows)
@@ -299,7 +298,8 @@ def export_latex_results(cat_grid, lat_mesh, lon_mesh, labels, model_name="GFDL"
         escape=False,
         caption=f"Global distribution of phytoplankton regimes and habitat statistics derived from {model_name} projections.",
         label=f"tab:habitat_stats_{model_name.lower()}",
-        column_format="p{7cm}cc" 
+        column_format="p{7cm}cc",
+        position="t"
     )
 
     output_path = "data/latex"
@@ -312,6 +312,8 @@ def export_latex_results(cat_grid, lat_mesh, lon_mesh, labels, model_name="GFDL"
     table_file = os.path.join(output_path, "habitat_table.tex")
     with open(table_file, "w") as f:
         f.write(table_tex)
+        
+    print(f"✅ LaTeX outputs exported to {output_path}")
 def export_hyperplane_stats(df, year="2024",model_name="GFDL", threshold=0.70):
     valid_r2 = df['R2'].dropna()
     total_records = len(valid_r2)
