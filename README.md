@@ -41,7 +41,7 @@ TO DO
 
 **Python dependencies:**
 
-Ensure you have intake-esm, xarray, xesmf, gcsfs, swifter, and datatree installed.
+Ensure you have intake-esm, xarray, xesmf, gcsfs, swifter, xmip and datatree installed.
 
 **2. Configuration**
 
