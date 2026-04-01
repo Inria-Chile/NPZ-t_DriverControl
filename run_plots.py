@@ -98,7 +98,7 @@ def plot_g_critic(df,year="2024",model="GFDL-ESM4"):
 
 
     cbar = plt.colorbar(im, orientation="vertical", shrink=0.7, pad=0.05)
-    cbar.set_label(f"$\gamma^{year}$")
+    cbar.set_label(fr"$\gamma^{{{year}}}$")
     cbar.solids.set_rasterized(True) 
     cbar.solids.set_edgecolor("face")
 
@@ -141,7 +141,7 @@ def plot_g_critic_shift(df1, df2,year1="2024",year2="2100",model="GFDL-ESM4", zo
     )
     im.set_rasterized(True)
     cbar = plt.colorbar(im, orientation="vertical", shrink=0.7, pad=0.05)
-    cbar.set_label(f"$\Delta \gamma=\gamma_{year1}-\gamma_{year2}$")
+    cbar.set_label(fr"$\Delta \gamma=\gamma^{{{year1}}}-\gamma^{{{year2}}}$")
     cbar.solids.set_rasterized(True)
     cbar.solids.set_edgecolor("face")
 
@@ -423,11 +423,11 @@ if __name__ == "__main__":
 
     plot_growth_rate()
 
-    df_2024_g = pd.read_parquet("~/data/g_critic_2024_ssp585_GFDL-ESM4.parquet")
+    df_2024_g = pd.read_parquet("/home/matiasneto/git/NPZ-T_Persistence/data/g_critic_2024_ssp585_GFDL-ESM4.parquet")
 
     plot_g_critic(df_2024_g)
 
-    df_2100_g = pd.read_parquet("~/data/g_critic_2100_ssp585_GFDL-ESM4.parquet")
+    df_2100_g = pd.read_parquet("/home/matiasneto/git/NPZ-T_Persistence/data/g_critic_2100_ssp585_GFDL-ESM4.parquet")
 
     plot_g_critic_shift(df_2024_g,df_2100_g)
 
@@ -437,13 +437,13 @@ if __name__ == "__main__":
 
     export_latex_results(cat_grid,lat_mesh,lon_mesh,labels)
 
-    df_hyper_2024_g = pd.read_parquet("~/data/hyperplane_2024_ssp585_GFDL-ESM4.parquet")
+    df_hyper_2024_g = pd.read_parquet("/home/matiasneto/git/NPZ-T_Persistence/data/hyperplane_2024_ssp585_GFDL-ESM4.parquet")
 
-    df_hyper_2100_g = pd.read_parquet("~/data/hyperplane_2100_ssp585_GFDL-ESM4.parquet")
+    df_hyper_2100_g = pd.read_parquet("/home/matiasneto/git/NPZ-T_Persistence/data/hyperplane_2100_ssp585_GFDL-ESM4.parquet")
 
-    export_hyperplane_stats(df_hyper_2024_g)
+    export_hyperplane_stats(df_hyper_2024_g, threshold=0.8)
 
-    export_hyperplane_stats(df_hyper_2100_g, year="2100")
+    export_hyperplane_stats(df_hyper_2100_g, threshold=0.8, year="2100")
 
     plot_thermal_index(df_hyper_2024_g)
 
