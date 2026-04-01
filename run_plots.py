@@ -7,10 +7,63 @@ import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 import numpy as np
 from scipy.interpolate import griddata
+from npz_t_engine import give_rates, params_map
 
 def fix_longitude(lon):
     lon_fixed = ((lon + 180) % 360) - 180
     return lon_fixed
+
+def plot_growth_rate(n_steps=2000):
+    plt.rcParams.update({
+        "font.family": "serif",
+        "font.size": 11,
+        "axes.labelsize": 12,
+        "axes.titlesize": 13,
+        "xtick.direction": "in",
+        "ytick.direction": "in"
+    })
+
+    temp_c = np.linspace(0, 42, n_steps)
+    T_kelvin = (temp_c + 273.15)
+
+    G_p = give_rates(T_kelvin, params_map['gp'])
+
+    plt.figure(figsize=(7, 5), dpi=300)
+    
+    plt.fill_between(temp_c, G_p, color='teal', alpha=0.1)
+    
+    plt.plot(temp_c, G_p, color='#008080', lw=2.5, label=r'Metabolic Growth Rate $\mu_P(T)$')
+
+    idx_opt = np.argmax(G_p)
+    t_opt = temp_c[idx_opt]
+    g_max = G_p[idx_opt]
+    
+    plt.axvline(t_opt, color='red', linestyle='--', alpha=0.5, lw=1)
+    plt.scatter(t_opt, g_max, color='red', s=40, zorder=5, label=f'$T_{{opt}}$ ({t_opt:.1f} °C)')
+
+    plt.text(t_opt - 10, g_max/2, 'Thermal\nActivation', horizontalalignment='center', alpha=0.6, fontsize=9)
+    plt.text(t_opt + 4, g_max/2, 'Thermal\nInactivation', horizontalalignment='center', alpha=0.6, fontsize=9)
+
+    plt.title("Phytoplankton Thermal Performance Curve (TPC)", pad=15)
+    plt.xlabel("Temperature (°C)")
+    plt.ylabel(r"Maximum Growth Rate ($\mu_p$) [day$^{-1}$]")
+    
+    plt.xlim(0, 42)
+    plt.ylim(0, g_max * 1.1)
+    
+    ax = plt.gca()
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    
+    plt.legend(frameon=False, loc='upper left')
+    plt.grid(axis='y', linestyle=':', alpha=0.5)
+    
+    plt.tight_layout()
+    
+    output_dir = "figures"
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    plt.savefig(f"{output_dir}/mu_p_metabolic_curve.pdf", bbox_inches='tight')
 
 def plot_g_critic(df,year="2024",model="GFDL-ESM4"):
     lats = df["lat"].to_numpy()
@@ -367,6 +420,8 @@ def plot_thermal_index(df,year="2024",zoom_spg=False):
 
 
 if __name__ == "__main__":
+
+    plot_growth_rate()
 
     df_2024_g = pd.read_parquet("~/data/g_critic_2024_ssp585_GFDL-ESM4.parquet")
 
