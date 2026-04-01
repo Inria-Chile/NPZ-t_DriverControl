@@ -261,25 +261,21 @@ def export_latex_results(cat_grid, lat_mesh, lon_mesh, labels, model_name="GFDL"
     R = 6371.0  
     dlat = np.abs(np.radians(lat_mesh[1, 0] - lat_mesh[0, 0]))
     dlon = np.abs(np.radians(lon_mesh[0, 1] - lon_mesh[0, 0]))
-    
     cell_areas = (R**2) * np.cos(np.radians(lat_mesh)) * dlat * dlon
     total_ocean_area = np.nansum(cell_areas[~np.isnan(cat_grid)])
     
     commands = [f"% --- {model_name} Automatic Variables ---"]
     table_rows = []
     
-    def clean_cmd_name(name):
-        clean = "".join(filter(str.isalpha, name.title()))
-        return clean
-
     for i, label in enumerate(labels):
         mask = (cat_grid == i)
         km2 = np.nansum(cell_areas[mask])
         m_km2 = km2 / 1e6 
         percentage = (km2 / total_ocean_area) * 100 if total_ocean_area > 0 else 0
         
-        cmd_base = clean_cmd_name(label)
-
+        # EL FIX: Quitamos espacios y guiones para que el comando sea \GFDLStableViabilityArea
+        cmd_base = label.title().replace(" ", "").replace("-", "").replace("\n", "")
+        
         cmd_area_name = f"{model_name}{cmd_base}Area"
         cmd_perc_name = f"{model_name}{cmd_base}Perc"
         
@@ -292,26 +288,19 @@ def export_latex_results(cat_grid, lat_mesh, lon_mesh, labels, model_name="GFDL"
             "Ocean Coverage (%)": f"\\{cmd_perc_name}\\%"
         })
 
-    df_stats = pd.DataFrame(table_rows)
-    table_tex = df_stats.to_latex(
-        index=False,
-        escape=False,
-        caption=f"Global distribution of phytoplankton regimes and habitat statistics derived from {model_name} projections.",
-        label=f"tab:habitat_stats_{model_name.lower()}",
-        column_format="p{7cm}cc",
-        position="t"
-    )
-
+    # Escritura de archivos
     output_path = "data/latex"
     os.makedirs(output_path, exist_ok=True)
-    
-    vars_file = os.path.join(output_path, "habitat_vars.tex")
-    with open(vars_file, "w") as f:
+    with open(os.path.join(output_path, "habitat_vars.tex"), "w") as f:
         f.write("\n".join(commands))
-        
-    table_file = os.path.join(output_path, "habitat_table.tex")
-    with open(table_file, "w") as f:
-        f.write(table_tex)
+
+    # Generar tabla manual para asegurar limpieza
+    with open(os.path.join(output_path, "habitat_table.tex"), "w") as f:
+        f.write("\\begin{tabular}{p{7cm}cc}\n\\toprule\n")
+        f.write("Ecological Regime / Habitat & Area ($10^6$ km$^2$) & Ocean Coverage (\\%) \\\\\n\\midrule\n")
+        for row in table_rows:
+            f.write(f"{row['Ecological Regime / Habitat']} & {row['Area ($10^6$ km$^2$)']} & {row['Ocean Coverage (%)']} \\\\\n")
+        f.write("\\bottomrule\n\\end{tabular}")
         
     print(f"✅ LaTeX outputs exported to {output_path}")
 def export_hyperplane_stats(df, year="2024",model_name="GFDL", threshold=0.70):
