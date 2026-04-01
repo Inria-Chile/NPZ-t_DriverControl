@@ -1,4 +1,6 @@
 import os
+import subprocess
+import platform
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -8,19 +10,40 @@ from multiprocessing import cpu_count
 from xmip.preprocessing import combined_preprocessing
 from npz_t_engine import apply_g_critic, apply_hyperplane
 
-# --- Data processing functions ---
 def setup_environment():
-    
-    if "ESMFMKFILE" not in os.environ:
-        try:
-            esmf_path = os.path.join(os.environ["HOME"], "git/esmf/lib/libO/")
-            gfortran_dir = next(item for item in os.listdir(esmf_path) if "gfortran" in item)
-            os.environ["ESMFMKFILE"] = os.path.join(esmf_path, gfortran_dir, "esmf.mk")
-            print(f"✅ ESMFMKFILE configured in: {os.environ['ESMFMKFILE']}")
-        except (StopIteration, KeyError):
-            print("⚠️ Check ~/git/esmf/")
+    if "ESMFMKFILE" in os.environ:
+        print(f"✅ ESMFMKFILE already set: {os.environ['ESMFMKFILE']}")
+        return
 
-# --- LÓGICA DE PROCESAMIENTO ---
+    try:
+        path_check = subprocess.check_output(["which", "esmf_regrid"], text=True).strip()
+        if path_check:
+            base_path = os.path.dirname(os.path.dirname(path_check))
+            potential_mk = os.path.join(base_path, "lib", "esmf.mk")
+            if os.path.exists(potential_mk):
+                os.environ["ESMFMKFILE"] = potential_mk
+                print(f"✅ ESMFMKFILE found via system: {os.environ['ESMFMKFILE']}")
+                return
+    except Exception:
+        pass
+
+    try:
+        home = os.environ["HOME"]
+        search_path = os.path.join(home, "git/esmf/lib/libO/")
+        
+        if os.path.exists(search_path):
+            subdirs = os.listdir(search_path)
+            if subdirs:
+                selected_dir = subdirs[0]
+                os.environ["ESMFMKFILE"] = os.path.join(search_path, selected_dir, "esmf.mk")
+                print(f"✅ ESMFMKFILE found in git folder: {os.environ['ESMFMKFILE']}")
+                return
+    except Exception:
+        pass
+
+    print("❌ ESMFMKFILE not found. Please install ESMF or set the variable manually.")
+
+# --- Process Logic ---
 
 def get_cmip6_datatree(
     source_ids=["GFDL-ESM4"], 
