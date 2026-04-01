@@ -132,19 +132,6 @@ def get_light_forcing(lat, t):
     raw_light = calculate_theoretical_insolation(lat, day)
     return raw_light * scaling_factor
 
-def calcular_tiempo(fecha):
-    dias_del_mes = fecha.days_in_month
-    dia_actual = fecha.day
-    mes = fecha.month
-
-    tiempo = mes - 1 + dia_actual / dias_del_mes
-
-    return tiempo
-
-def fix_longitude(lon):
-    lon_fixed = ((lon + 180) % 360) - 180
-    return lon_fixed
-
 def compute_g_critic(row, n_steps=2000, params_calc=params_map,i_0=40):
     temp_vec = row["temperature_vector"]
     depth_vec = row["mld_vector"]
@@ -186,8 +173,6 @@ def hyperplane_balanced(n_steps, temp_vec, depth_vec, lat, params_calc=params_ma
     mld_max = np.max(depth_vec)
     idx_max = np.argmax(depth_vec)
     
-    # Grilla 5x5 
-    # Variamos MLD +- 50 metros (si es posible) y Temp +- 3 grados
     ML_vals = np.linspace(max(10, mld_max - 50), mld_max + 50, 5)
     DELTA_vals = np.linspace(-3.0, 3.0, 5)
     
@@ -198,46 +183,36 @@ def hyperplane_balanced(n_steps, temp_vec, depth_vec, lat, params_calc=params_ma
     results = np.zeros_like(ML_list)
     temp_fit_base = fit_temp_vector(temp_vec, n_points=n_steps)
     
-    # Pre-calculamos la luz una sola vez para el píxel (ahorra tiempo)
     t_mid = np.linspace(0, 365, n_steps)[1:-1]
     I_mid = get_light_forcing(lat, t_mid)
     
     for i in range(len(ML_list)):
-        # Física
         d_vec_temp = depth_vec.copy()
         d_vec_temp[idx_max] = ML_list[i]
         H0_mid, s0 = give_h_smas(n_steps, d_vec_temp)
         dH = (1 / (K_d * H0_mid)) * (1 - np.exp(-K_d * H0_mid))
         
-        # Biología con Arroyo
         T_kelvin_mid = (temp_fit_base + 273.15 + DELTA_list[i])[1:-1]
         G_p = give_rates(T_kelvin_mid, params_calc['gp'])
         M_p = give_rates(T_kelvin_mid, params_calc['mp'])
         
-        # Invasión
         mu = G_p * (I_mid / (I_mid + 40)) * dH
         G_total = np.trapezoid(mu, t_mid)
         L_total = np.trapezoid(M_p+s0, t_mid)
     
-        results[i] = L_total / G_total #if np.abs(G_total) > 1e-6 else 2
+        results[i] = L_total / G_total 
 
-    # Regresión
     X = np.column_stack((DELTA_list, ML_list))
     reg = LinearRegression().fit(X, results)
     
     return reg.coef_[0], reg.coef_[1], reg.intercept_, reg.score(X, results)
 
 def compute_hyperplane(row, n_steps=2000, params_calc=None):
-    """
-    Función para aplicar por fila. Calcula el plano de sensibilidad local
-    de la tasa de crecimiento ante variaciones de Temperatura y MLD.
-    """
-    # 1. Extracción de datos de la fila
+
     lat = row["lat"]
     temp_vec = np.array(row["temperature_vector"], dtype=float)
     depth_vec = np.array(row["mld_vector"], dtype=float)
 
-    # 2. Validación de datos (evitar píxeles de tierra o nulos)
     if temp_vec is None or depth_vec is None or len(temp_vec) == 0 or np.isnan(temp_vec).any():
         return pd.Series({
             'S_temp': np.nan, 
@@ -246,20 +221,16 @@ def compute_hyperplane(row, n_steps=2000, params_calc=None):
             'R2': np.nan
         })
 
-    # 3. Llamada al motor del hiperplano (usando la versión 'Balanced' 5x5)
-    # Retorna: a (S_T), b (S_H), c (Intercept), R2
+
     a, b, c, r2 = hyperplane_balanced(n_steps, temp_vec, depth_vec, lat, params_calc)
         
-    # 4. Retornamos una Serie para que Pandas genere 4 columnas nuevas
     return pd.Series({
-        'S_temp': a,       # Sensibilidad térmica (da m_f / da delta_T)
-        'S_mld': b,        # Sensibilidad a la mezcla (da m_f / da MLD_max)
-        'Intercept': c,    # Valor base
-        'R2': r2           # Calidad del ajuste para el paper
+        'S_temp': a,      
+        'S_mld': b,      
+        'Intercept': c,  
+        'R2': r2          
     })
 def apply_hyperplane(df, n_steps=2000, params_calc=params_map):
-    # 1. Filtramos filas que tengan datos válidos para evitar errores en el motor
-    # Es más eficiente filtrar primero y luego aplicar solo a lo que sirve
     mask = df.apply(
         lambda row: (row["temperature_vector"] is not None) and 
                     (row["mld_vector"] is not None) and 

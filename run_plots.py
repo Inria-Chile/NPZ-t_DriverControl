@@ -9,7 +9,6 @@ import numpy as np
 from scipy.interpolate import griddata
 
 def fix_longitude(lon):
-    """Convierte longitudes de [0, 360] a [-180, 180]"""
     lon_fixed = ((lon + 180) % 360) - 180
     return lon_fixed
 
@@ -205,11 +204,7 @@ def plot_biogeo_shift(df1,df2,year1="2024",year2="2100",model="GFDL-ESM4"):
     #plt.show()
     return labels, cat_grid, lat_mesh, lon_mesh
 def export_latex_results(cat_grid, lat_mesh, lon_mesh, labels, model_name="GFDL"):
-    """
-    Calculates global area statistics and exports two separate LaTeX files:
-    1. habitat_vars.tex  -> Contains \newcommand macros for text citations.
-    2. habitat_table.tex -> Contains the professional table structure using macros.
-    """
+
     R = 6371.0  
     dlat = np.abs(np.radians(lat_mesh[1, 0] - lat_mesh[0, 0]))
     dlon = np.abs(np.radians(lon_mesh[0, 1] - lon_mesh[0, 0]))
@@ -265,10 +260,6 @@ def export_latex_results(cat_grid, lat_mesh, lon_mesh, labels, model_name="GFDL"
     with open(table_file, "w") as f:
         f.write(table_tex)
 def export_hyperplane_stats(df, year="2024",model_name="GFDL", threshold=0.70):
-    """
-    Calculates R-squared statistics for the hyperplane approximation 
-    and exports them as LaTeX commands for the manuscript.
-    """
     valid_r2 = df['R2'].dropna()
     total_records = len(valid_r2)
     
@@ -294,7 +285,6 @@ def export_hyperplane_stats(df, year="2024",model_name="GFDL", threshold=0.70):
     with open(file_name, "w") as f:
         f.write("\n".join(cmds))
 
-    # 4. QUICK CONSOLE SUMMARY (For you to check immediately)
     print(f"\n📊 Hyperplane Stats [{model_name}]")
     print("-" * 30)
     print(f"Total Valid Pixels : {total_records:,}")
@@ -319,40 +309,29 @@ def plot_thermal_index(df,year="2024",zoom_spg=False):
     lat_grid = np.linspace(lats.min(), lats.max(), 1000)
     lon_mesh, lat_mesh = np.meshgrid(lon_grid, lat_grid)
 
-# Interpolación lineal para eliminar el efecto de "puntos sueltos"
     grid_values = griddata((lons, lats), values, (lon_mesh, lat_mesh), method="linear")
 
-# 3. Configuración del Gráfico Profesional
     fig = plt.figure(figsize=(12, 6), dpi=300)
     ax = plt.axes(projection=ccrs.PlateCarree())
 
-# --- Estética Geográfica ---
-    ax.add_feature(cfeature.LAND, facecolor='#F0F0F0', zorder=2) # Tierra clara
+    ax.add_feature(cfeature.LAND, facecolor='#F0F0F0', zorder=2) 
     ax.add_feature(cfeature.COASTLINE, edgecolor='#404040', linewidth=0.6, zorder=3)
     ax.add_feature(cfeature.OCEAN, facecolor='white', zorder=0)
     if zoom_spg==True:
         ax.set_extent([-80, 0, 35, 65], crs=ccrs.PlateCarree())
 
-# --- Escala de Colores Divergente ---
-# Esto asegura que el 0 sea blanco puro. 
-# Si S_temp es solo positivo, usa cmap="Viridis" y quita TwoSlopeNorm.
-# --- Escala de Colores Inteligente ---
     v_min, v_max = np.nanmin(grid_values), np.nanmax(grid_values)
 
-# Caso 1: Los datos cruzan el cero (Divergente)
     if v_min < 0 and v_max > 0:
         norm = mcolors.TwoSlopeNorm(vmin=v_min, vcenter=0, vmax=v_max)
         cmap = "RdBu_r"
-# Caso 2: Todo es positivo (ej. S_temp siempre sube)
     elif v_min >= 0:
         norm = mcolors.Normalize(vmin=v_min, vmax=v_max)
-        cmap = "RdBu_r" # O "Reds" si quieres mantener el calor
-# Caso 3: Todo es negativo
+        cmap = "RdBu_r" 
     else:
         norm = mcolors.Normalize(vmin=v_min, vmax=v_max)
         cmap = "Blues_r"
 
-# --- El Contorneado Suave ---
     im = ax.contourf(
         lon_mesh, lat_mesh, grid_values, 
         transform=ccrs.PlateCarree(), 
@@ -360,22 +339,19 @@ def plot_thermal_index(df,year="2024",zoom_spg=False):
         levels=100, 
         norm=norm, 
         extend='both',
-        zorder=1  # <--- ESTA ES LA CLAVE
+        zorder=1  
     )
     im.set_rasterized(True)
 
-    # 3. Detalles de la barra de color (para que no se vea segmentada en el PDF)
     cbar = plt.colorbar(im, orientation="vertical", shrink=0.6, pad=0.03)
-    cbar.solids.set_rasterized(True) # También rasterizamos los bloques de la barra
+    cbar.solids.set_rasterized(True) 
     cbar.solids.set_edgecolor("face")
 
-    # 4. Detalles Finales (Sin la línea negra del cero)
     cbar.set_label(fr"$\mathcal{{D}}^{{{year}}}_T(x)$", fontsize=12)
     cbar.ax.tick_params(labelsize=10)
     if zoom_spg==False:
         plt.title(f"Global Thermal Dominance Index ({year})")
 
-        # Guardar en alta calidad
         output_dir = "figures"
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
@@ -383,8 +359,6 @@ def plot_thermal_index(df,year="2024",zoom_spg=False):
         #plt.show()
     else:
         plt.title(f"SPG Thermal Dominance Index ({year})")
-
-        # Guardar en alta calidad
         output_dir = "figures"
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
@@ -394,11 +368,11 @@ def plot_thermal_index(df,year="2024",zoom_spg=False):
 
 if __name__ == "__main__":
 
-    df_2024_g = pd.read_parquet("/home/matiasneto/git/NPZ-T_Persistence/data/g_critic_2024_ssp585_GFDL-ESM4.parquet")
+    df_2024_g = pd.read_parquet("~/data/g_critic_2024_ssp585_GFDL-ESM4.parquet")
 
     plot_g_critic(df_2024_g)
 
-    df_2100_g = pd.read_parquet("/home/matiasneto/git/NPZ-T_Persistence/data/g_critic_2100_ssp585_GFDL-ESM4.parquet")
+    df_2100_g = pd.read_parquet("~/data/g_critic_2100_ssp585_GFDL-ESM4.parquet")
 
     plot_g_critic_shift(df_2024_g,df_2100_g)
 
@@ -408,9 +382,9 @@ if __name__ == "__main__":
 
     export_latex_results(cat_grid,lat_mesh,lon_mesh,labels)
 
-    df_hyper_2024_g = pd.read_parquet("/home/matiasneto/git/NPZ-T_Persistence/data/hyperplane_2024_ssp585_GFDL-ESM4.parquet")
+    df_hyper_2024_g = pd.read_parquet("~/data/hyperplane_2024_ssp585_GFDL-ESM4.parquet")
 
-    df_hyper_2100_g = pd.read_parquet("/home/matiasneto/git/NPZ-T_Persistence/data/hyperplane_2100_ssp585_GFDL-ESM4.parquet")
+    df_hyper_2100_g = pd.read_parquet("~/data/hyperplane_2100_ssp585_GFDL-ESM4.parquet")
 
     export_hyperplane_stats(df_hyper_2024_g)
 
