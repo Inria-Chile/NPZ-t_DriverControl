@@ -42,7 +42,7 @@ TO DO
 
 **Python dependencies:**
 
-Ensure you have intake-esm, xarray, xesmf, gcsfs, swifter, xmip and datatree installed.
+Ensure you have intake-esm, xarray, xesmf, gcsfs, swifter, xmip, cartopy and datatree installed.
 
 **2. Configuration**
 
