@@ -73,7 +73,7 @@ To ensure 100% consistency between the code and the manuscript, this framework e
 If you use this framework or the NPZ-T model in your research, please cite the following manuscript:
 
 ```bibtex
-@article{Neto2025NPZT,
+@article{Neto2026NPZT,
   title={Beyond the Critical Depth: The Metabolic and Physical Drivers of Phytoplankton Persistence in a Changing Ocean},
   author={Neto, Matías and Marquet, Pablo A. and Freilich, Mara and Martí, Luis and Sanchez-Pi, Nayat},
   journal={ArXiv (Preprint)},
