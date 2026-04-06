@@ -63,7 +63,6 @@ def plot_growth_rate(n_steps=2000):
     plt.savefig(f"{output_dir}/mu_p_metabolic_curve.pdf", bbox_inches='tight')
 
 def plot_growth_rate1(n_steps=2000, num_species=150, gp=0.8):
-    # 1. Configuración de estilo original
     plt.rcParams.update({
         "font.family": "serif",
         "font.size": 11,
@@ -73,7 +72,6 @@ def plot_growth_rate1(n_steps=2000, num_species=150, gp=0.8):
         "ytick.direction": "in"
     })
 
-    # 2. Arrays de temperatura
     temp_c = np.linspace(0, 42, n_steps)
     T_kelvin = (temp_c + 273.15)
 
@@ -93,23 +91,18 @@ def plot_growth_rate1(n_steps=2000, num_species=150, gp=0.8):
         term_H = (H_rand / R) * ((1.0 / T0) - (1.0 / T_kelvin))
         tasa_rand = gp * np.exp(term_C + term_H)
         
-        # Filtramos para evitar exponenciales absurdos por los randoms extremos
         tasa_rand = np.clip(tasa_rand, 0, gp * 3) 
         
-        # Solo le ponemos label a la primera línea para no saturar la leyenda
         lbl = 'Simulated Phenotypic Variance ($\pm$0.025 SD)' if i == 0 else ""
         plt.plot(temp_c, tasa_rand, color='gray', alpha=0.2, lw=1, zorder=2, label=lbl)
 
-    # 4. CURVA PROMEDIO (La que usas en el modelo NPZ-T global)
     term_C_mean = (C_mean / R) * np.log(T_kelvin / T0)
     term_H_mean = (H_mean / R) * ((1.0 / T0) - (1.0 / T_kelvin))
     G_p = gp * np.exp(term_C_mean + term_H_mean)
 
     
-    # Mantenemos tu línea principal
     plt.plot(temp_c, G_p, color='#008080', lw=2.5, zorder=3, label=r'Community Mean TPC $\mu_P(T)$')
 
-    # 5. MARCADORES DEL ÓPTIMO Y TEXTOS
     idx_opt = np.argmax(G_p)
     t_opt = temp_c[idx_opt]
     g_max = G_p[idx_opt]
@@ -118,25 +111,22 @@ def plot_growth_rate1(n_steps=2000, num_species=150, gp=0.8):
     plt.scatter(t_opt, g_max, color='red', s=40, zorder=5, label=f'Mean TPC $T_{{opt}}$ ({t_opt:.1f} °C)')
 
 
-    # 6. DETALLES FINALES
-    plt.title("Phytoplankton Thermal Performance Curve (TPC)", pad=15)
+    plt.title("Phytoplankton Thermal Performance Curves (TPCs)", pad=15)
     plt.xlabel("Temperature (°C)")
     plt.ylabel(r"Maximum Growth Rate ($\mu_p$) [day$^{-1}$]")
     
     plt.xlim(0, 42)
-    plt.ylim(0, 1.3)  # Ajuste estético para que se vea bien la varianza
+    plt.ylim(0, 1.3)  
     
     ax = plt.gca()
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
     
-    # Leyenda ordenada
     plt.legend(frameon=False, loc='upper left', fontsize=10)
     plt.grid(axis='y', linestyle=':', alpha=0.5)
     
     plt.tight_layout()
     
-    # 7. GUARDAR
     output_dir = "figures"
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -491,33 +481,33 @@ if __name__ == "__main__":
 
     plot_growth_rate1()
 
-    #df_2024_g = pd.read_parquet("/home/matiasneto/git/NPZ-T_Persistence/data/g_critic_2024_ssp585_GFDL-ESM4.parquet")
+    df_2024_g = pd.read_parquet("/home/matiasneto/git/NPZ-T_Persistence/data/g_critic_2024_ssp585_GFDL-ESM4.parquet")
 
-    #plot_g_critic(df_2024_g)
+    plot_g_critic(df_2024_g)
 
-    #df_2100_g = pd.read_parquet("/home/matiasneto/git/NPZ-T_Persistence/data/g_critic_2100_ssp585_GFDL-ESM4.parquet")
+    df_2100_g = pd.read_parquet("/home/matiasneto/git/NPZ-T_Persistence/data/g_critic_2100_ssp585_GFDL-ESM4.parquet")
 
-    #plot_g_critic_shift(df_2024_g,df_2100_g)
+    plot_g_critic_shift(df_2024_g,df_2100_g)
 
-    #plot_g_critic_shift(df_2024_g,df_2100_g,zoom_spg=True)
+    plot_g_critic_shift(df_2024_g,df_2100_g,zoom_spg=True)
 
-    #labels, cat_grid, lat_mesh, lon_mesh = plot_biogeo_shift(df_2024_g,df_2100_g)
+    labels, cat_grid, lat_mesh, lon_mesh = plot_biogeo_shift(df_2024_g,df_2100_g)
 
-    #export_latex_results(cat_grid,lat_mesh,lon_mesh,labels)
+    export_latex_results(cat_grid,lat_mesh,lon_mesh,labels)
 
-    #df_hyper_2024_g = pd.read_parquet("/home/matiasneto/git/NPZ-T_Persistence/data/hyperplane_2024_ssp585_GFDL-ESM4.parquet")
+    df_hyper_2024_g = pd.read_parquet("/home/matiasneto/git/NPZ-T_Persistence/data/hyperplane_2024_ssp585_GFDL-ESM4.parquet")
 
-    #df_hyper_2100_g = pd.read_parquet("/home/matiasneto/git/NPZ-T_Persistence/data/hyperplane_2100_ssp585_GFDL-ESM4.parquet")
+    df_hyper_2100_g = pd.read_parquet("/home/matiasneto/git/NPZ-T_Persistence/data/hyperplane_2100_ssp585_GFDL-ESM4.parquet")
 
-    #export_hyperplane_stats(df_hyper_2024_g, threshold=0.8)
+    export_hyperplane_stats(df_hyper_2024_g, threshold=0.8)
 
-    #export_hyperplane_stats(df_hyper_2100_g, threshold=0.8, year="2100")
+    export_hyperplane_stats(df_hyper_2100_g, threshold=0.8, year="2100")
 
-    #plot_thermal_index(df_hyper_2024_g)
+    plot_thermal_index(df_hyper_2024_g)
 
-    #plot_thermal_index(df_hyper_2100_g,year="2100")
+    plot_thermal_index(df_hyper_2100_g,year="2100")
 
-    #plot_thermal_index(df_hyper_2100_g,year="2100",zoom_spg=True)
+    plot_thermal_index(df_hyper_2100_g,year="2100",zoom_spg=True)
 
 
 
