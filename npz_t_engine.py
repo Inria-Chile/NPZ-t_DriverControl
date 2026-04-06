@@ -72,25 +72,36 @@ def fit_temp_vector(temp_vector, n_points=2000):
     return y_fit
 
 
-def Constants(m):
-  C,H =-14418.93, 4213943.43
-  ln=np.log(m)
-  S0=(ln-np.log(kB/h_d)-np.log(T0)+H/(R*T0))*R
-  return C, H, S0, ln
-
 def get_params_arroyo(val_base):
-    C, H, S0, ln = Constants(val_base)
-    const_part = np.log(kB / h_d) + (S0 / R) - (C / R) * np.log(T0)
-    return {'C': C, 'H': H, 'const_part': const_part}
+    C = -14418.93
+    H = 4213943.43
+    
+    # Y_0 es tu valor base (gp o mp) a T0 (20°C)
+    return {'Y_0': val_base, 'C': C, 'H': H}
 
+# Asumiendo que gp y mp están definidos (ej. gp = 0.8)
 params_map = {
     'gp': get_params_arroyo(gp),
     'mp': get_params_arroyo(mp)
 }
 
-
 def give_rates(T_kelvin, p):
-    return np.exp(((p['C'] / R) + 1) * np.log(T_kelvin) + p['const_part'] - (p['H'] / (R * T_kelvin)))
+    """
+    Calcula la tasa metabólica usando la aproximación macroscópica de Arroyo,
+    normalizada por T0 para evitar Underflow numérico.
+    """
+    Y_0 = p['Y_0']
+    C = p['C']
+    H = p['H']
+    
+    # Exponentes separados y normalizados por T0
+    term_C = (C / R) * np.log(T_kelvin / T0)
+    term_H = (H / R) * ((1.0 / T0) - (1.0 / T_kelvin))
+    
+    # Ecuación final
+    tasa = Y_0 * np.exp(term_C + term_H)
+    
+    return tasa
 
 
 def calculate_theoretical_insolation(lat_deg, day_of_year):
