@@ -340,7 +340,6 @@ def export_latex_results(cat_grid, lat_mesh, lon_mesh, labels, model_name="GFDL"
         m_km2 = km2 / 1e6 
         percentage = (km2 / total_ocean_area) * 100 if total_ocean_area > 0 else 0
         
-        # EL FIX: Quitamos espacios y guiones para que el comando sea \GFDLStableViabilityArea
         cmd_base = label.title().replace(" ", "").replace("-", "").replace("\n", "")
         
         cmd_area_name = f"{model_name}{cmd_base}Area"
@@ -355,13 +354,11 @@ def export_latex_results(cat_grid, lat_mesh, lon_mesh, labels, model_name="GFDL"
             "Ocean Coverage (%)": f"\\{cmd_perc_name}\\%"
         })
 
-    # Escritura de archivos
     output_path = "data/latex"
     os.makedirs(output_path, exist_ok=True)
     with open(os.path.join(output_path, "habitat_vars.tex"), "w") as f:
         f.write("\n".join(commands))
 
-    # Generar tabla manual para asegurar limpieza
     with open(os.path.join(output_path, "habitat_table.tex"), "w") as f:
         f.write("\\begin{tabular}{p{7cm}cc}\n\\toprule\n")
         f.write("Ecological Regime / Habitat & Area ($10^6$ km$^2$) & Ocean Coverage (\\%) \\\\\n\\midrule\n")
