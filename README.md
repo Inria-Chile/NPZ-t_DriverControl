@@ -76,9 +76,10 @@ If you use this framework or the NPZ-T model in your research, please cite the f
 @misc{Neto2026NPZT,
   title={Beyond the Critical Depth: The Metabolic and Physical Drivers of Phytoplankton Persistence in a Changing Ocean},
   author={Neto, Matías and Marquet, Pablo A. and Freilich, Mara and Martí, Luis and Sanchez-Pi, Nayat},
-  journal={HAL (Preprint)},
+  journal={arxiv Preprint},
   year={2026},
   note={Submitted to SIALS}
+  doi={10.48550/arXiv.2604.14759}
 }
 
 ``
