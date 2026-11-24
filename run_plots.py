@@ -4,325 +4,264 @@ import os
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
+import seaborn as sns
 import cartopy.feature as cfeature
 import numpy as np
 from scipy.interpolate import griddata
-from npz_t_engine import give_rates, params_map
+from data_processing import clean_data
 
 def fix_longitude(lon):
     lon_fixed = ((lon + 180) % 360) - 180
     return lon_fixed
-
-def plot_growth_rate(n_steps=2000):
-    plt.rcParams.update({
-        "font.family": "serif",
-        "font.size": 11,
-        "axes.labelsize": 12,
-        "axes.titlesize": 13,
-        "xtick.direction": "in",
-        "ytick.direction": "in"
-    })
-
-    temp_c = np.linspace(0, 42, n_steps)
-    T_kelvin = (temp_c + 273.15)
-
-    G_p = give_rates(T_kelvin, params_map['gp'])
-
-    plt.figure(figsize=(7, 5), dpi=300)
+def plot_g_critic(df, year="2024", model="GFDL-ESM4", zoom_spg=False):
+# 1. Preparar datos y purgar la grieta artificial de Greenwich (entre -1° y 1.5°)
+    # 1. Preparar datos y purgar la grieta artificial de Greenwich (entre -1° y 1.5°)
+    df_ice_base = df.copy()
+    lon_fixed = (df_ice_base["lon"].to_numpy() + 180) % 360 - 180
     
-    plt.fill_between(temp_c, G_p, color='teal', alpha=0.1)
+    # Filtrar NaNs artificiales de la grieta en el mapa base
+    is_fake_nan = (lon_fixed >= -1.0) & (lon_fixed <= 1.5) & df_ice_base["g_critic"].isna()
+    df_ice_base = df_ice_base[~is_fake_nan]
     
-    plt.plot(temp_c, G_p, color='#008080', lw=2.5, label=r'Metabolic Growth Rate $\mu_P(T)$')
-
-    idx_opt = np.argmax(G_p)
-    t_opt = temp_c[idx_opt]
-    g_max = G_p[idx_opt]
+    # Crear el set de datos 100% limpio (sin ningún NaN) para interpolar el océano continuo
+    df_clean = df_ice_base.dropna(subset=["g_critic"])
     
-    plt.axvline(t_opt, color='red', linestyle='--', alpha=0.5, lw=1)
-    plt.scatter(t_opt, g_max, color='red', s=40, zorder=5, label=f'$T_{{opt}}$ ({t_opt:.1f} °C)')
-
-    plt.title("Phytoplankton Thermal Performance Curve (TPC)", pad=15)
-    plt.xlabel("Temperature (°C)")
-    plt.ylabel(r"Maximum Growth Rate ($\mu_p$) [day$^{-1}$]")
+    # Coordenadas limpias del océano
+    lon_cl = (df_clean["lon"].to_numpy() + 180) % 360 - 180
+    lat_cl = df_clean["lat"].to_numpy()
+    g_v = df_clean["g_critic"].to_numpy()
     
-    plt.xlim(0, 42)
-    plt.ylim(0, g_max * 1.1)
+    # Crear indicador binario de datos válidos en el mapa base (1 = océano, 0 = tierra/hielo)
+    lon_raw = (df_ice_base["lon"].to_numpy() + 180) % 360 - 180
+    lat_raw = df_ice_base["lat"].to_numpy()
+    base_var = df_ice_base["g_critic"].to_numpy()
+    valid_indicator = (~np.isnan(base_var)).astype(float)
     
-    ax = plt.gca()
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
+    # 2. Acolchado Cíclico en extremos del Pacífico (+/-150°) para evitar cortes laterales
+    pad_l = lon_cl < -150
+    pad_r = lon_cl > 150
+    lon_cl_p = np.concatenate([lon_cl, lon_cl[pad_l] + 360, lon_cl[pad_r] - 360])
+    lat_cl_p = np.concatenate([lat_cl, lat_cl[pad_l], lat_cl[pad_r]])
+    val_cl_p = np.concatenate([g_v, g_v[pad_l], g_v[pad_r]])
     
-    plt.legend(frameon=False, loc='upper left')
-    plt.grid(axis='y', linestyle=':', alpha=0.5)
+    pad_raw_l = lon_raw < -150
+    pad_raw_r = lon_raw > 150
+    lon_raw_p = np.concatenate([lon_raw, lon_raw[pad_raw_l] + 360, lon_raw[pad_raw_r] - 360])
+    lat_raw_p = np.concatenate([lat_raw, lat_raw[pad_raw_l], lat_raw[pad_raw_r]])
+    valid_p = np.concatenate([valid_indicator, valid_indicator[pad_raw_l], valid_indicator[pad_raw_r]])
     
-    plt.tight_layout()
-    
-    output_dir = "figures"
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-    plt.savefig(f"{output_dir}/mu_p_metabolic_curve.pdf", bbox_inches='tight')
-
-def plot_growth_rate1(n_steps=2000, num_species=150, gp=0.8):
-    plt.rcParams.update({
-        "font.family": "serif",
-        "font.size": 11,
-        "axes.labelsize": 12,
-        "axes.titlesize": 13,
-        "xtick.direction": "in",
-        "ytick.direction": "in"
-    })
-
-    temp_c = np.linspace(0, 42, n_steps)
-    T_kelvin = (temp_c + 273.15)
-
-    R = 8.314462618
-    T0 = 293.15
-    C_mean, C_sd = -14418.93, 2879.40
-    H_mean, H_sd = 4213943.43, 838418.23
-
-    plt.figure(figsize=(7, 5), dpi=300)
-    
-    np.random.seed(42) 
-    for i in range(num_species):
-        C_rand = np.random.normal(C_mean, C_sd*0.025)
-        H_rand = np.random.normal(H_mean, H_sd*0.025)
+    # 3. Crear grilla y realizar la interpolación dual según el zoom
+    if zoom_spg:
+        # Grilla regional optimizada para el Giro Subpolar
+        lon_grid = np.linspace(-90, 10, 1000)
+        lat_grid = np.linspace(25, 75, 1000)
+        lon_mesh_final, lat_mesh_final = np.meshgrid(lon_grid, lat_grid)
         
-        term_C = (C_rand / R) * np.log(T_kelvin / T0)
-        term_H = (H_rand / R) * ((1.0 / T0) - (1.0 / T_kelvin))
-        tasa_rand = gp * np.exp(term_C + term_H)
+        # Interpolación limpia del océano
+        g_interp_linear = griddata((lon_cl_p, lat_cl_p), val_cl_p, (lon_mesh_final, lat_mesh_final), method="linear")
+        g_interp_nearest = griddata((lon_cl_p, lat_cl_p), val_cl_p, (lon_mesh_final, lat_mesh_final), method="nearest")
+        g_interp_clean = np.where(np.isnan(g_interp_linear), g_interp_nearest, g_interp_linear)
         
-        tasa_rand = np.clip(tasa_rand, 0, gp * 3) 
+        # Interpolación de la máscara binaria para suavizar bordes
+        grid_mask = griddata((lon_raw_p, lat_raw_p), valid_p, (lon_mesh_final, lat_mesh_final), method="linear")
         
-        lbl = 'Simulated Phenotypic Variance ($\pm$0.025 SD)' if i == 0 else ""
-        plt.plot(temp_c, tasa_rand, color='gray', alpha=0.2, lw=1, zorder=2, label=lbl)
-
-    term_C_mean = (C_mean / R) * np.log(T_kelvin / T0)
-    term_H_mean = (H_mean / R) * ((1.0 / T0) - (1.0 / T_kelvin))
-    G_p = gp * np.exp(term_C_mean + term_H_mean)
-
-    
-    plt.plot(temp_c, G_p, color='#008080', lw=2.5, zorder=3, label=r'Community Mean TPC $\mu_P(T)$')
-
-    idx_opt = np.argmax(G_p)
-    t_opt = temp_c[idx_opt]
-    g_max = G_p[idx_opt]
-    
-    plt.axvline(t_opt, color='red', linestyle='--', alpha=0.5, lw=1, zorder=4)
-    plt.scatter(t_opt, g_max, color='red', s=40, zorder=5, label=f'Mean TPC $T_{{opt}}$ ({t_opt:.1f} °C)')
-
-
-    plt.title("Phytoplankton Thermal Performance Curves (TPCs)", pad=15)
-    plt.xlabel("Temperature (°C)")
-    plt.ylabel(r"Maximum Growth Rate ($\mu_p$) [day$^{-1}$]")
-    
-    plt.xlim(0, 42)
-    plt.ylim(0, 1.3)  
-    
-    ax = plt.gca()
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-    
-    plt.legend(frameon=False, loc='upper left', fontsize=10)
-    plt.grid(axis='y', linestyle=':', alpha=0.5)
-    
-    plt.tight_layout()
-    
-    output_dir = "figures"
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-    plt.savefig(f"{output_dir}/mu_p_metabolic_curve.pdf", bbox_inches='tight')
-
-def plot_g_critic(df,year="2024",model="GFDL-ESM4"):
-    lats = df["lat"].to_numpy()
-    lons = fix_longitude(df["lon"].to_numpy())
-    g_1 = df["g_critic"].to_numpy()
-    g_2 = df["g_critic"].to_numpy()
-
-    lon_grid = np.linspace(lons.min(), lons.max(), 1000)
-    lat_grid = np.linspace(lats.min(), lats.max(), 1000)
-    lon_mesh, lat_mesh = np.meshgrid(lon_grid, lat_grid)
-    g_interp = griddata((lons, lats), g_1, (lon_mesh, lat_mesh), method="linear")
-
-    fig = plt.figure(figsize=(12, 6))
-    ax = plt.axes(projection=ccrs.PlateCarree())
-
-    ax.add_feature(cfeature.COASTLINE, linewidth=0.5)
-    ax.add_feature(cfeature.LAND, facecolor="lightgray")
-
-    limit = 1.0 
-    levels = np.linspace(0, limit, 41)
-
-    im = ax.contourf(
-        lon_mesh, lat_mesh, g_interp,
-        transform=ccrs.PlateCarree(),
-        cmap="RdBu_r",
-        levels=levels,
-        extend='both',
-        zorder=1    
-    )
-
-    im.set_rasterized(True)
-
-
-    cbar = plt.colorbar(im, orientation="vertical", shrink=0.7, pad=0.05)
-    cbar.set_label(fr"$\gamma^{{{year}}}$")
-    cbar.solids.set_rasterized(True) 
-    cbar.solids.set_edgecolor("face")
-
-    plt.title(f"Critical Nutrient Requirement ({year},{model})")
-    output_dir = "figures"
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-    plt.savefig(f"figures/g_critic_{year}_{model}.pdf", bbox_inches='tight', dpi=300)
-    #plt.show()
-
-def plot_g_critic_shift(df1, df2,year1="2024",year2="2100",model="GFDL-ESM4", zoom_spg=False):
-    lats = df1["lat"].to_numpy()
-    lons = fix_longitude(df1["lon"].to_numpy())
-    g_1 = df1["g_critic"].to_numpy()
-    g_2 = df2["g_critic"].to_numpy()
-
-    lon_grid = np.linspace(lons.min(), lons.max(), 1000)
-    lat_grid = np.linspace(lats.min(), lats.max(), 1000)
-    lon_mesh, lat_mesh = np.meshgrid(lon_grid, lat_grid)
-    g_interp = griddata((lons, lats), g_2-g_1, (lon_mesh, lat_mesh), method="linear")
-
-    fig = plt.figure(figsize=(12, 6))
-    ax = plt.axes(projection=ccrs.PlateCarree())
-
-    ax.add_feature(cfeature.COASTLINE, linewidth=0.5, zorder=11)
-    ax.add_feature(cfeature.LAND, facecolor="lightgray")
-    if zoom_spg==True:
-        ax.set_extent([-80, 0, 35, 65], crs=ccrs.PlateCarree())
-
-    limit = 0.5 
-    levels = np.linspace(-limit, limit, 41)
-
-    im = ax.contourf(
-        lon_mesh, lat_mesh, g_interp,
-        transform=ccrs.PlateCarree(),
-        cmap="PRGn_r",
-        levels=levels,
-        extend='both',
-        zorder=1
-    )
-    im.set_rasterized(True)
-    cbar = plt.colorbar(im, orientation="vertical", shrink=0.7, pad=0.05)
-    cbar.set_label(fr"$\Delta \gamma=\gamma^{{{year1}}}-\gamma^{{{year2}}}$")
-    cbar.solids.set_rasterized(True)
-    cbar.solids.set_edgecolor("face")
-
-    if zoom_spg==True:
-        plt.title(f"Shift in Critical Nutrient Requirement SPG ({year1}--{year2},{model})")
-        output_dir = "figures"
-        if not os.path.exists(output_dir):
-            os.makedirs(output_dir)
-        plt.savefig(f"figures/g_critic_shift_spg_{model}.pdf", bbox_inches='tight', dpi=300)
-        #plt.show()
+        # Aplicamos la máscara con umbral de tolerancia para permitir el recorte perfecto de Cartopy
+        mask_condition = (grid_mask < 0.4) | np.isnan(grid_mask)
+        g_interp_clean[mask_condition] = np.nan
+        g_interp_final = g_interp_clean
     else:
-        plt.title(f"Shift in Critical Nutrient Requirement ({year1}--{year2},{model})")
+        # Grilla global completa
+        lon_grid = np.linspace(-180, 180, 1200)
+        lat_grid = np.linspace(-90, 90, 1200)
+        lon_mesh, lat_mesh = np.meshgrid(lon_grid, lat_grid)
+        
+        # Interpolación limpia global del océano
+        g_interp_linear = griddata((lon_cl_p, lat_cl_p), val_cl_p, (lon_mesh, lat_mesh), method="linear")
+        g_interp_nearest = griddata((lon_cl_p, lat_cl_p), val_cl_p, (lon_mesh, lat_mesh), method="nearest")
+        g_interp_clean = np.where(np.isnan(g_interp_linear), g_interp_nearest, g_interp_linear)
+        
+        # Interpolación de la máscara binaria global
+        grid_mask = griddata((lon_raw_p, lat_raw_p), valid_p, (lon_mesh, lat_mesh), method="linear")
+        
+        mask_condition = (grid_mask < 0.4) | np.isnan(grid_mask)
+        g_interp_clean[mask_condition] = np.nan
+        
+        # Sello cíclico manual para cerrar herméticamente el mapa global
+        lon_step = lon_grid[1] - lon_grid[0]
+        lon_grid_cycl = np.append(lon_grid, lon_grid[-1] + lon_step)
+        g_interp_final = np.hstack([g_interp_clean, g_interp_clean[:, :1]])
+        lon_mesh_final, lat_mesh_final = np.meshgrid(lon_grid_cycl, lat_grid)
+    
+# 4. Configurar la escena con Cartopy
+    fig = plt.figure(figsize=(12, 6), dpi=300)
+    ax = plt.axes(projection=ccrs.PlateCarree())
+    
+    # Teñimos el fondo del mapa (hielo y NaNs profundos) con un gris azulado frío pálido
+    ax.set_facecolor('#cbd5e1') 
+    
+    # Tierra firme en gris medio para un contraste limpio
+    ax.add_feature(cfeature.LAND, facecolor="#94a3b8", zorder=2)
+    ax.add_feature(cfeature.COASTLINE, linewidth=0.5, zorder=3)
+    
+    if zoom_spg:
+        ax.set_extent([-80, 0, 35, 65], crs=ccrs.PlateCarree())
+        
+    vmin, vmax = 0.0, 2.0
+    levels = np.linspace(vmin, vmax, 41) 
+    
+    # Graficar usando transform_first=True
+    im = ax.contourf(
+        lon_mesh_final, lat_mesh_final, g_interp_final,
+        transform=ccrs.PlateCarree(),
+        cmap="RdBu_r", 
+        levels=levels,
+        extend='both',
+        zorder=1,
+        transform_first=True
+    )
+    im.set_rasterized(True)
+    
+    # 5. Colorbar destacando el 1.0 en el centro
+    cbar = plt.colorbar(im, orientation="vertical", shrink=0.7, pad=0.05)
+    
+    # AJUSTES DE FUENTE PARA CONSISTENCIA
+    cbar.set_label(fr"$\gamma^{{{year}}}$", fontsize=11, labelpad=10) # Igual que en el mapa categórico
+    cbar.ax.tick_params(labelsize=10) # Tamaño 10 para los números, igual que los labels categóricos
+    
+    cbar.solids.set_rasterized(True) 
+    cbar.solids.set_edgecolor("face")
+    cbar.set_ticks([0.0, 0.5, 1.0, 1.5, 2.0])
+
+
+    if zoom_spg:
+        plt.title(f"SPG Critical Nutrient Saturation Ratio ({year},{model})")
         output_dir = "figures"
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
-        plt.savefig(f"figures/g_critic_shift_{model}.pdf", bbox_inches='tight', dpi=300)
-        #plt.show()
+        plt.savefig(f"figures/g_critic_{year}_{model}_spg.pdf", bbox_inches='tight', dpi=300)
+    else:
+        plt.title(f"Global Critical Nutrient Saturation ({year},{model})")
+        output_dir = "figures"
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+        plt.savefig(f"figures/g_critic_{year}_{model}.pdf", bbox_inches='tight', dpi=300)
+    #plt.show()
 
-def plot_biogeo_shift(df1,df2,year1="2024",year2="2100",model="GFDL-ESM4"):
-    lats = df1["lat"].to_numpy()
-    lons = fix_longitude(df1["lon"].to_numpy())
-    g24_raw = df1["g_critic"].to_numpy()
-    g21_raw = df2["g_critic"].to_numpy()
-
-
-    lon_grid = np.linspace(lons.min(), lons.max(), 1000) 
-    lat_grid = np.linspace(lats.min(), lats.max(), 1000)
+def plot_driver_dominance(df, year="2024", zoom_spg=False):
+    """
+    Genera el mapa discreto con contornos suaves (contourf).
+    Mantiene el calado de hielo orgánico de g_critic pero purga la grieta
+    de NaNs de Greenwich para eliminar la línea blanca de forma definitiva.
+    """
+    # 1. Calcular los drivers dominantes usando el dataset limpio
+    df_clean = clean_data(df)
+    conditions = [
+        (df_clean['Impact_Temp'] >= df_clean['Impact_Mld']) & (df_clean['Impact_Temp'] >= df_clean['Impact_Light']),
+        (df_clean['Impact_Mld'] >= df_clean['Impact_Temp']) & (df_clean['Impact_Mld'] >= df_clean['Impact_Light']),
+        (df_clean['Impact_Light'] >= df_clean['Impact_Temp']) & (df_clean['Impact_Light'] >= df_clean['Impact_Mld'])
+    ]
+    choices = [1, 2, 3]
+    df_clean['dominant_driver'] = np.select(conditions, choices, default=np.nan)
+    df_clean = df_clean.dropna(subset=['dominant_driver'])
+    
+    # Forzar longitudes al formato centrado [-180, 180]
+    lon_cl = (df_clean["lon"].to_numpy() + 180) % 360 - 180
+    lat_cl = df_clean["lat"].to_numpy()
+    val_cl = df_clean["dominant_driver"].to_numpy()
+    
+    # 2. CLAVE: Preparar los datos del hielo, pero purgando la grieta artificial de Greenwich
+    df_ice_base = df.copy()
+    lon_raw_fixed = (df_ice_base["lon"].to_numpy() + 180) % 360 - 180
+    
+    # Filtramos los NaNs artificiales que están entre -1° y 1.5° de longitud
+    is_fake_nan = (lon_raw_fixed >= -1.0) & (lon_raw_fixed <= 1.5) & df_ice_base["Impact_Temp"].isna()
+    df_ice_base = df_ice_base[~is_fake_nan]
+    
+    lon_raw = (df_ice_base["lon"].to_numpy() + 180) % 360 - 180
+    lat_raw = df_ice_base["lat"].to_numpy()
+    base_var = df_ice_base["Impact_Temp"].to_numpy()
+    
+    # 3. Acolchado Cíclico en los extremos del Pacífico (+/-150) para evitar cortes laterales
+    pad_l = lon_cl < -150
+    pad_r = lon_cl > 150
+    lon_cl_p = np.concatenate([lon_cl, lon_cl[pad_l] + 360, lon_cl[pad_r] - 360])
+    lat_cl_p = np.concatenate([lat_cl, lat_cl[pad_l], lat_cl[pad_r]])
+    val_cl_p = np.concatenate([val_cl, val_cl[pad_l], val_cl[pad_r]])
+    
+    pad_raw_l = lon_raw < -150
+    pad_raw_r = lon_raw > 150
+    lon_raw_p = np.concatenate([lon_raw, lon_raw[pad_raw_l] + 360, lon_raw[pad_raw_r] - 360])
+    lat_raw_p = np.concatenate([lat_raw, lat_raw[pad_raw_l], lat_raw[pad_raw_r]])
+    base_var_p = np.concatenate([base_var, base_var[pad_raw_l], base_var[pad_raw_r]])
+    
+    # 4. Crear la grilla de alta resolución de -180 a 180 (Greenwich queda seguro en el centro)
+    lon_grid = np.linspace(-180, 180, 1200)
+    lat_grid = np.linspace(-90, 90, 1200)
     lon_mesh, lat_mesh = np.meshgrid(lon_grid, lat_grid)
-
-
-    g24_grid = griddata((lons, lats), g24_raw, (lon_mesh, lat_mesh), method='linear')
-    g21_grid = griddata((lons, lats), g21_raw, (lon_mesh, lat_mesh), method='linear')
-
-    cat_grid = np.full_like(g24_grid, np.nan)
-
-    is_num_24 = ~np.isnan(g24_grid)
-    is_num_100 = ~np.isnan(g21_grid)
-    v24 = g24_grid < 1.0
-    v21 = g21_grid < 1.0
-
-    cat_grid = np.where(is_num_24 & is_num_100 & v24 & v21, 0, cat_grid)
-
-    cat_grid = np.where(is_num_24 & is_num_100 & ~v24 & ~v21, 1, cat_grid)
-
-    cat_grid = np.where(is_num_24 & is_num_100 & ~v24 & v21, 2, cat_grid)
-
-    cat_grid = np.where(is_num_24 & is_num_100 & v24 & ~v21, 3, cat_grid)
-
-    cat_grid = np.where(~is_num_24 & is_num_100 & v21, 4, cat_grid)
-
-    cat_grid = np.where(~is_num_24 & is_num_100 & ~v21, 5, cat_grid)
-
-    ocean_colors = [
-        "#AEDCF8", 
-        '#5D6D7E', 
-        "#81DAA7", 
-        '#F1948A', 
-        '#229954', 
-        '#B03A2E'  
-]
-    cmap_cat = mcolors.ListedColormap(ocean_colors)
-    bounds = [0, 1, 2, 3, 4, 5, 6]
-    norm_cat = mcolors.BoundaryNorm(bounds, cmap_cat.N)
-
-    fig = plt.figure(figsize=(12, 5), dpi=300) 
+    
+    # 5. Interpolación Dual
+    # 'nearest' para los drivers del océano
+    grid_values = griddata((lon_cl_p, lat_cl_p), val_cl_p, (lon_mesh, lat_mesh), method="nearest")
+    # 'linear' para el hielo (al no tener la grieta, unirá el Atlántico de forma continua)
+    grid_mask = griddata((lon_raw_p, lat_raw_p), base_var_p, (lon_mesh, lat_mesh), method="linear")
+    
+    # Aplicamos el calado de hielo limpio (donde es NaN real, se borra)
+    grid_values[np.isnan(grid_mask)] = np.nan
+    
+    # 6. Sello cíclico manual para cerrar herméticamente los bordes extremos del mapa
+    lon_step = lon_grid[1] - lon_grid[0]
+    lon_grid_cycl = np.append(lon_grid, lon_grid[-1] + lon_step)
+    grid_values_cycl = np.hstack([grid_values, grid_values[:, :1]])
+    lon_mesh_cycl, lat_mesh_cycl = np.meshgrid(lon_grid_cycl, lat_grid)
+    
+    # 7. Configurar la escena con Cartopy
+    fig = plt.figure(figsize=(12, 6), dpi=300)
     ax = plt.axes(projection=ccrs.PlateCarree())
-
-
-    ax.add_feature(cfeature.LAND, facecolor="#2C3E50", zorder=2) 
-    ax.add_feature(cfeature.COASTLINE, linewidth=0.3, color='#444444', zorder=3)
-
-    im = ax.pcolormesh(
-        lon_mesh, lat_mesh, cat_grid,
-        transform=ccrs.PlateCarree(),
-        cmap=cmap_cat,
-        norm=norm_cat,
-        shading='nearest',
-        alpha=0.9,
-        zorder=1
+    
+    ax.add_feature(cfeature.LAND, facecolor="lightgray", zorder=2)
+    ax.add_feature(cfeature.COASTLINE, linewidth=0.5, zorder=3)
+    
+    if zoom_spg:
+        ax.set_extent([-80, 0, 35, 65], crs=ccrs.PlateCarree())
+        
+    # Paleta de 3 niveles
+    colors = ['#E66101', '#5E3C99', '#4DAC26'] 
+    cmap = mcolors.ListedColormap(colors)
+    bounds = [0.5, 1.5, 2.5, 3.5]
+    norm = mcolors.BoundaryNorm(bounds, cmap.N)
+    
+    # Dibujar usando contornos vectoriales suaves continuos
+    im = ax.contourf(
+        lon_mesh_cycl, lat_mesh_cycl, grid_values_cycl, 
+        transform=ccrs.PlateCarree(), 
+        cmap=cmap, 
+        norm=norm, 
+        levels=bounds,
+        zorder=1  
     )
     im.set_rasterized(True)
-
-    ax.add_feature(cfeature.BORDERS, linestyle=':', linewidth=0.2, color='gray')
-
-    cbar = plt.colorbar(
-        im, 
-        ticks=[0.5, 1.5, 2.5, 3.5, 4.5, 5.5], 
-        orientation="horizontal", 
-        shrink=0.7, 
-        pad=0.1, 
-        aspect=50   
-    )
-
-    labels = [
-        'Stable\nViability', 
-        'Stable\nRestriction', 
-        'Habitat\nExpansion', 
-        'Habitat\nContraction',
-        'Ice-Free\nViability', 
-        'Ice-Free\nRestriction'
-    ]
-
-    cbar.ax.set_xticklabels(labels, fontsize=8, ha='center')
-    cbar.outline.set_visible(False)
+    
+    # Colorbar
+    cbar = plt.colorbar(im, orientation="vertical", shrink=0.5, pad=0.03, spacing='proportional')
     cbar.solids.set_rasterized(True) 
     cbar.solids.set_edgecolor("face")
-
-    plt.title(f"Biogeographical Shifts in Critical Threshold ({year1}–-{year2},{model})")
-    output_dir = "figures"
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-    plt.savefig(f"figures/biogeo_shifts_{model}.pdf", bbox_inches='tight', dpi=300)
+    cbar.set_ticks([1.0, 2.0, 3.0])
+    cbar.ax.set_yticklabels(['Thermal-Metabolic Driven', 'Physical Mixing Driven', 'Light Amplitude Driven'], fontsize=10)
+    
+    if zoom_spg:
+        plt.title(f"SPG Phytoplankton Driver Control ({year})", fontsize=13, pad=10)
+    
+        output_dir = "figures"
+        os.makedirs(output_dir, exist_ok=True)
+        plt.savefig(f"{output_dir}/driver_dominance_spg_{year}.pdf", bbox_inches='tight', dpi=300)
+    else:
+        plt.title(f"Global Phytoplankton Driver Control ({year})", fontsize=13, pad=10)
+    
+        output_dir = "figures"
+        os.makedirs(output_dir, exist_ok=True)
+        plt.savefig(f"{output_dir}/driver_dominance_global_{year}.pdf", bbox_inches='tight', dpi=300)
+        
     #plt.show()
-    return labels, cat_grid, lat_mesh, lon_mesh
 
 def export_latex_results(cat_grid, lat_mesh, lon_mesh, labels, model_name="GFDL"):
     R = 6371.0  
@@ -407,105 +346,156 @@ def export_hyperplane_stats(df, year="2024",model_name="GFDL", threshold=0.70):
         "mean_r2": mean_r2
     }
 
-def plot_thermal_index(df,year="2024",zoom_spg=False):
-    metric_name = 'sens'
-    lats = df["lat"].to_numpy()
-    lons = fix_longitude(df["lon"].to_numpy())
-    values = df[metric_name].to_numpy()
+def plot_global_shift_1d(df_2024, df_2100):
+    """
+    Generates a 1D density plot comparing the Global Ocean in 2024 vs 2100.
+    Demonstrates the global shift towards thermal-metabolic dominance.
+    """
+    # Función interna para calcular el porcentaje térmico
+    def get_thermal_pct(df):
+        df_clean = clean_data(df).copy()
+        df_clean = df_clean.dropna(subset=['Impact_Temp', 'Impact_Mld', 'Impact_Light'])
+        
+        total_impact = df_clean['Impact_Temp'] + df_clean['Impact_Mld'] + df_clean['Impact_Light']
+        valid_mask = total_impact > 0
+        df_clean = df_clean[valid_mask]
+        total_impact = total_impact[valid_mask]
+        
+        return (df_clean['Impact_Temp'] / total_impact) * 100
 
-    lon_grid = np.linspace(lons.min(), lons.max(), 1000)
-    lat_grid = np.linspace(lats.min(), lats.max(), 1000)
-    lon_mesh, lat_mesh = np.meshgrid(lon_grid, lat_grid)
+    # 1. Calcular los porcentajes para ambos años
+    thermal_2024 = get_thermal_pct(df_2024)
+    thermal_2100 = get_thermal_pct(df_2100)
+    
+# 2. Configurar el gráfico
+    fig, ax = plt.subplots(figsize=(8, 4), dpi=300)
+    
+    # Curva 2024 (Azul apagado para el baseline)
+    sns.kdeplot(thermal_2024, fill=True, color="#4C72B0", alpha=0.4, linewidth=2, 
+                label="Baseline (2024)", ax=ax)
+    
+    # Curva 2100 (Naranja para la proyección futura)
+    sns.kdeplot(thermal_2100, fill=True, color="#E66101", alpha=0.5, linewidth=2, 
+                label="Projection (2100)", ax=ax)
+    
+    # 3. Estética y ejes
+    ax.set_xlim(0, 100)
+    
+    # Ejes estandarizados (sin negrita, tamaño 11 igual al label de tu mapa)
+    ax.set_ylabel("Probability Density", fontsize=11)
+    ax.set_xlabel("Thermal-Metabolic Driver Dominance (%)", fontsize=11)
+    
+    # Textos estandarizados (sin negrita, tamaño 10 igual a los ticks de tu mapa)
+    ax.text(5, ax.get_ylim()[1] * 1.05, r"$\leftarrow$ Mixing Driven", color="#5E3C99", fontsize=10)
+    ax.text(70, ax.get_ylim()[1] * 1.05, r"Thermal Driven $\rightarrow$", color="#E66101", fontsize=10)
+    
+    # Limpiar bordes innecesarios, PERO mantenemos el izquierdo ('left') activo
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    
+    # Forzar notación científica en el eje Y
+    plt.ticklabel_format(style='sci', axis='y', scilimits=(0,0))
+    
+    # Leyenda estandarizada
+    ax.legend(frameon=False, fontsize=10, loc="upper center")
+    
+    # 4. Guardar
+    output_dir = "figures"
+    os.makedirs(output_dir, exist_ok=True)
+    plt.savefig(f"{output_dir}/driver_density_1d_global_shift.pdf", bbox_inches='tight', dpi=300)
+    #plt.show()
+def plot_driver_shift_1d(df, year="2100"):
+    """
+    Genera un gráfico de densidad 1D superponiendo el océano global y el SPG.
+    Demuestra cómo el SPG resiste la termalización global.
+    """
+    # 1. Limpieza inicial
+    df_clean = clean_data(df).copy()
+    df_clean = df_clean.dropna(subset=['Impact_Temp', 'Impact_Mld', 'Impact_Light'])
+    
+    # 2. Calcular el porcentaje térmico por píxel
+    total_impact = df_clean['Impact_Temp'] + df_clean['Impact_Mld'] + df_clean['Impact_Light']
+    valid_mask = total_impact > 0
+    df_clean = df_clean[valid_mask]
+    total_impact = total_impact[valid_mask]
+    
+    # Solo necesitamos el eje térmico, ya que (Mezcla = 100 - Térmico)
+    df_clean['thermal_pct'] = (df_clean['Impact_Temp'] / total_impact) * 100
+    
+    # 3. Separar los datos en Global vs SPG
+    # Corregir longitud a [-180, 180]
+    lon_fixed = (df_clean['lon'] + 180) % 360 - 180
+    lat = df_clean['lat']
+    
+    # Máscara del SPG (mismos límites de Cartopy)
+    spg_mask = (lon_fixed >= -80) & (lon_fixed <= 0) & (lat >= 35) & (lat <= 65)
+    
+    # Extraer las series de datos
+    global_thermal = df_clean['thermal_pct']
+    spg_thermal = df_clean.loc[spg_mask, 'thermal_pct']
+    
 
-    grid_values = griddata((lons, lats), values, (lon_mesh, lat_mesh), method="linear")
+    # 2. Configurar el gráfico
+    fig, ax = plt.subplots(figsize=(8, 4), dpi=300)
+    
+    # Curva 2024 (Azul apagado para el baseline)
+    sns.kdeplot(global_thermal, fill=True, color="#E66101", alpha=0.4, linewidth=2, 
+                label="Global Projection (2100)", ax=ax)
+    
+    # Curva 2100 (Naranja para la proyección futura)
+    sns.kdeplot(spg_thermal, fill=True, color="#4C72B0", alpha=0.5, linewidth=2, 
+                label="Subpolar Gyre (SPG)", ax=ax)
 
-    fig = plt.figure(figsize=(12, 6), dpi=300)
-    ax = plt.axes(projection=ccrs.PlateCarree())
-
-    ax.add_feature(cfeature.LAND, facecolor='#F0F0F0', zorder=2) 
-    ax.add_feature(cfeature.COASTLINE, edgecolor='#404040', linewidth=0.6, zorder=3)
-    ax.add_feature(cfeature.OCEAN, facecolor='white', zorder=0)
-    if zoom_spg==True:
-        ax.set_extent([-80, 0, 35, 65], crs=ccrs.PlateCarree())
-
-    v_min, v_max = np.nanmin(grid_values), np.nanmax(grid_values)
-
-    if v_min < 0 and v_max > 0:
-        norm = mcolors.TwoSlopeNorm(vmin=v_min, vcenter=0, vmax=v_max)
-        cmap = "RdBu_r"
-    elif v_min >= 0:
-        norm = mcolors.Normalize(vmin=v_min, vmax=v_max)
-        cmap = "RdBu_r" 
-    else:
-        norm = mcolors.Normalize(vmin=v_min, vmax=v_max)
-        cmap = "Blues_r"
-
-    im = ax.contourf(
-        lon_mesh, lat_mesh, grid_values, 
-        transform=ccrs.PlateCarree(), 
-        cmap=cmap, 
-        levels=100, 
-        norm=norm, 
-        extend='both',
-        zorder=1  
-    )
-    im.set_rasterized(True)
-
-    cbar = plt.colorbar(im, orientation="vertical", shrink=0.6, pad=0.03)
-    cbar.solids.set_rasterized(True) 
-    cbar.solids.set_edgecolor("face")
-
-    cbar.set_label(fr"$\mathcal{{D}}^{{{year}}}_T(x)$", fontsize=12)
-    cbar.ax.tick_params(labelsize=10)
-    if zoom_spg==False:
-        plt.title(f"Global Thermal Dominance Index ({year})")
-
-        output_dir = "figures"
-        if not os.path.exists(output_dir):
-            os.makedirs(output_dir)
-        plt.savefig(f"figures/thermal_dominance_temp_{year}.pdf", bbox_inches='tight', dpi=300)
-        #plt.show()
-    else:
-        plt.title(f"SPG Thermal Dominance Index ({year})")
-        output_dir = "figures"
-        if not os.path.exists(output_dir):
-            os.makedirs(output_dir)
-        plt.savefig(f"figures/spg_thermal_dominance_temp_{year}.pdf", bbox_inches='tight', dpi=300)
-        #plt.show()
+    # 3. Estética y ejes
+    ax.set_xlim(0, 100)
+    
+    # Ejes estandarizados (sin negrita, tamaño 11 igual al label de tu mapa)
+    ax.set_ylabel("Probability Density", fontsize=11)
+    ax.set_xlabel("Thermal-Metabolic Driver Dominance (%)", fontsize=11)
+    
+    # Textos estandarizados (sin negrita, tamaño 10 igual a los ticks de tu mapa)
+    ax.text(5, ax.get_ylim()[1] * 1.05, r"$\leftarrow$ Mixing Driven", color="#5E3C99", fontsize=10)
+    ax.text(70, ax.get_ylim()[1] * 1.05, r"Thermal Driven $\rightarrow$", color="#E66101", fontsize=10)
+    
+    # Limpiar bordes innecesarios, PERO mantenemos el izquierdo ('left') activo
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    
+    # Forzar notación científica en el eje Y
+    plt.ticklabel_format(style='sci', axis='y', scilimits=(0,0))
+    
+    # Leyenda estandarizada
+    ax.legend(frameon=False, fontsize=10, loc="upper center")
+    
+    # 6. Guardar
+    output_dir = "figures"
+    os.makedirs(output_dir, exist_ok=True)
+    plt.savefig(f"{output_dir}/driver_density_1d_spg_{year}.pdf", bbox_inches='tight', dpi=300)
+    #plt.show()
 
 
 if __name__ == "__main__":
 
-    plot_growth_rate1()
 
     df_2024_g = pd.read_parquet("/home/matiasneto/git/NPZ-T_Persistence/data/g_critic_2024_ssp585_GFDL-ESM4.parquet")
 
     plot_g_critic(df_2024_g)
 
-    df_2100_g = pd.read_parquet("/home/matiasneto/git/NPZ-T_Persistence/data/g_critic_2100_ssp585_GFDL-ESM4.parquet")
+    df_2024_h = pd.read_parquet("data1/hyperplane_2024_ssp585_GFDL-ESM4.parquet")
 
-    plot_g_critic_shift(df_2024_g,df_2100_g)
+    df_2100_h = pd.read_parquet("data1/hyperplane_2100_ssp585_GFDL-ESM4.parquet")
 
-    plot_g_critic_shift(df_2024_g,df_2100_g,zoom_spg=True)
+    plot_driver_dominance(df_2024_h, year="2024", zoom_spg=False)
 
-    labels, cat_grid, lat_mesh, lon_mesh = plot_biogeo_shift(df_2024_g,df_2100_g)
+    plot_driver_dominance(df_2100_h, year="2100", zoom_spg=False)
 
-    export_latex_results(cat_grid,lat_mesh,lon_mesh,labels)
+    export_hyperplane_stats(df_2024_h, year="2024", model_name="GFDL", threshold=0.70)
 
-    df_hyper_2024_g = pd.read_parquet("/home/matiasneto/git/NPZ-T_Persistence/data/hyperplane_2024_ssp585_GFDL-ESM4.parquet")
+    export_hyperplane_stats(df_2100_h, year="2100", model_name="GFDL", threshold=0.70)
 
-    df_hyper_2100_g = pd.read_parquet("/home/matiasneto/git/NPZ-T_Persistence/data/hyperplane_2100_ssp585_GFDL-ESM4.parquet")
+    plot_global_shift_1d(df_2024_h, df_2100_h)
 
-    export_hyperplane_stats(df_hyper_2024_g, threshold=0.8)
-
-    export_hyperplane_stats(df_hyper_2100_g, threshold=0.8, year="2100")
-
-    plot_thermal_index(df_hyper_2024_g)
-
-    plot_thermal_index(df_hyper_2100_g,year="2100")
-
-    plot_thermal_index(df_hyper_2100_g,year="2100",zoom_spg=True)
-
+    plot_driver_shift_1d(df_2100_h, year="2100")
 
 
 
