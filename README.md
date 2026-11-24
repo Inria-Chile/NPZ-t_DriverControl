@@ -1,21 +1,21 @@
-# Beyond the Critical Depth: NPZ-T Global Persistence Framework
+# Emerging Thermal-Metabolic Control of Phytoplankton Annual Cycles (NPZ-t)
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![Powered by Pangeo](https://img.shields.io/badge/Powered%20by-Pangeo-orange.svg)](https://pangeo.io/)
 
-This repository contains the official implementation of the **NPZ-T (Nutrient-Phytoplankton-Zooplankton-Temperature)** diagnostic framework. The model applies **non-autonomous dynamical systems theory** to CMIP6 climate projections to identify global phytoplankton persistence thresholds and habitat regime shifts.
+Official implementation of the **NPZ-t (Nutrient-Phytoplankton-Zooplankton-Temperature)** diagnostic framework. The model applies non-autonomous periodic dynamical systems theory to CMIP6 climate projections (GFDL-ESM4, SSP5-8.5) to quantify the physical and metabolic drivers governing phytoplankton annual cycles.
 
-## 🔬 Scientific Context
+## Scientific Context
 
-This project implements a diagnostic tool to calculate the **Critical Nutrient Threshold** ($\gamma_{crit}$), identifying the transition from mixing-driven to metabolic-driven ecological regimes. The core stability is determined via Floquet theory, linearizing the dynamics around the extinction equilibrium to derive uniform persistence criteria.
+This repository implements a diagnostic framework to evaluate the **Critical Nutrient Saturation Ratio** ($\gamma_{\text{crit}}$) and diagnose global regime shifts between physical-mixing, thermal-metabolic, and light-amplitude controls. By linearizing the non-autonomous system around the extinction equilibrium ($E_0$), the stability boundary is derived algebraically via the phytoplankton Floquet exponent ($\lambda_P$), followed by a first-order Taylor sensitivity decomposition across environmental anomalies ($\Delta T$, $\Delta H$, $\Delta I$).
 
-## 🛠 Repository Structure
+## Repository Structure
 
-* **`npz_t_engine.py`**: The mathematical core. Implements Thermodynamic Performance Curves (TPC), linearized Floquet stability analysis, and the calculation of critical bifurcation points.
-* **`data_processing.py`**: High-performance data pipeline. Connects to the **Pangeo CMIP6 Cloud** via `intake-esm`, manages **Dask** distributed clusters, and performs `xMIP` preprocessing.
-* **`run_plots.py`**: Visualization suite and LaTeX exporter. Generates global maps using `cartopy` and automates the generation of results for the manuscript.
-* **`data/`**: Local storage for processed `.pkl` files and exported LaTeX tables (ignored by git).
+- **`npz_t_engine.py`**: Mathematical core. Implements Thermodynamic Performance Curves (TPC), Floquet stability thresholds ($\lambda_P$, $\gamma_{\text{crit}}$), and trivariate sensitivity gradients.
+- **`data_processing.py`**: Data pipeline. Connects to the **Pangeo CMIP6 Cloud** via `intake-esm`, manages **Dask** distributed clusters, and performs `xMIP` preprocessing.
+- **`run_plots.py`**: Visualization suite and LaTeX exporter. Generates global driver maps and 1D Kernel Density Estimates (KDE) using `cartopy`, automating numerical outputs for the manuscript.
+- **`data/`**: Local storage for processed `.pkl` files and exported LaTeX tables (ignored by git).
 
 ## 🚀 Getting Started
 
@@ -64,9 +64,8 @@ The data_processing.py script automatically locates your ESMFMKFILE if it follow
 
 To ensure 100% consistency between the code and the manuscript, this framework exports two types of LaTeX files to data/latex/:
 
-    habitat_vars.tex: Automatically generates \newcommand macros (e.g., \GFDLViableNicheArea). Use these in your .tex document to cite exact values that update automatically if the model parameters change.
+    driver_vars.tex: Exports \newcommand macros with exact summary statistics (e.g., Taylor decomposition $R^2$ metrics and global driver dominance percentages) that update automatically upon parameter           changes.
 
-    habitat_table.tex: A production-ready table with professional formatting containing global area statistics and coverage percentages.
 
 ## 📜 Citation
 
@@ -74,11 +73,10 @@ If you use this framework or the NPZ-T model in your research, please cite the f
 
 ```bibtex
 @misc{Neto2026NPZT,
-  title={Beyond the Critical Depth: The Metabolic and Physical Drivers of Phytoplankton Persistence in a Changing Ocean},
-  author={Neto, Matías and Marquet, Pablo A. and Freilich, Mara and Martí, Luis and Sanchez-Pi, Nayat},
-  journal={arxiv Preprint},
+  title={Emerging Thermal-Metabolic Control of Phytoplankton Annual Cycles: Extending the Critical Depth Hypothesis},
+  author={Neto, Matías A. and Marquet, Pablo A. and Freilich, Mara A. and Martí, Luis and Sanchez-Pi, Nayat},
   year={2026},
-  note={Submitted to SIALS}
+  note={Submitted to SIAM Journal on Life Sciences (SIALS)},
   doi={10.48550/arXiv.2604.14759}
 }
 
